@@ -29,19 +29,29 @@ class ApiClient {
     };
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    const timeout = setTimeout(() => controller.abort(), 45000); // Increased timeout for file downloads
 
     try {
       const startTime = Date.now();
       
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+
+      // Set appropriate Accept header based on response type
+      if (responseType === 'json') {
+        headers['Accept'] = 'application/json';
+      } else {
+        headers['Accept'] = '*/*';
+      }
+      
       const response = await fetch(url, {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': responseType === 'json' ? 'application/json' : '*/*'
-        },
+        headers,
         body: body ? JSON.stringify(body) : undefined,
-        signal: controller.signal
+        signal: controller.signal,
+        mode: 'cors',
+        credentials: 'omit'
       });
 
       debugEntry.duration = Date.now() - startTime;
@@ -61,9 +71,18 @@ class ApiClient {
         throw new Error(`Backend error (${response.status}): ${errorData.detail || errorData.error}`);
       }
 
-      const result = responseType === 'blob' 
-        ? await response.blob()
-        : await response.json();
+      let result: any;
+      if (responseType === 'blob') {
+        result = await response.blob();
+        console.log('Received blob:', { 
+          size: result.size, 
+          type: result.type,
+          contentType: response.headers.get('content-type'),
+          contentDisposition: response.headers.get('content-disposition')
+        });
+      } else {
+        result = await response.json();
+      }
 
       return result as T;
     } catch (error) {

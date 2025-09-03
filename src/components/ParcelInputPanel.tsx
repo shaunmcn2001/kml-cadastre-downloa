@@ -115,7 +115,7 @@ LOT 13 DP1242624
             placeholder={`Enter ${inputState.selectedState} parcel identifiers (one per line)...`}
             value={inputState.rawInput}
             onChange={(e) => updateRawInput(e.target.value)}
-            className="mt-2 min-h-32 font-mono text-sm"
+            className="mt-2 min-h-40 max-h-60 font-mono text-sm resize-none scrollbar-thin"
           />
         </div>
 
@@ -143,7 +143,7 @@ LOT 13 DP1242624
                 <AlertDescription>
                   <div className="space-y-2">
                     <p><strong>{inputState.malformedEntries.length}</strong> malformed entries:</p>
-                    <div className="max-h-20 overflow-y-auto text-xs space-y-1">
+                    <div className="max-h-32 overflow-y-auto text-xs space-y-1 scrollbar-thin">
                       {inputState.malformedEntries.map((entry, i) => (
                         <div key={i} className="flex justify-between items-start gap-2">
                           <span className="font-mono bg-destructive/10 px-1 rounded">
@@ -182,13 +182,13 @@ LOT 13 DP1242624
         {hasAttemptedQuery && inputState.validParcels.length > 0 && (
           <div className="text-sm text-muted-foreground">
             <p className="font-medium mb-1">Valid Parcels to Query:</p>
-            <div className="max-h-32 overflow-y-auto bg-muted p-2 rounded text-xs font-mono space-y-0.5">
-              {inputState.validParcels.slice(0, 10).map((parcel, i) => (
+            <div className="max-h-40 overflow-y-auto bg-muted p-2 rounded text-xs font-mono space-y-0.5 scrollbar-thin">
+              {inputState.validParcels.slice(0, 50).map((parcel, i) => (
                 <div key={i}>{parcel.id}</div>
               ))}
-              {inputState.validParcels.length > 10 && (
+              {inputState.validParcels.length > 50 && (
                 <div className="text-muted-foreground">
-                  ... and {inputState.validParcels.length - 10} more
+                  ... and {inputState.validParcels.length - 50} more
                 </div>
               )}
             </div>

@@ -24,8 +24,25 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
 
   const downloadFile = (blob: Blob, filename: string) => {
     try {
+      console.log('Attempting download:', { filename, blobSize: blob.size, blobType: blob.type });
+      
+      // Check if blob is valid
+      if (!blob || blob.size === 0) {
+        console.error('Invalid blob:', blob);
+        throw new Error('Received empty or invalid file data');
+      }
+      
+      // Try modern download approach first
+      if (window.navigator && (window.navigator as any).msSaveBlob) {
+        // IE/Edge fallback
+        console.log('Using IE/Edge download method');
+        (window.navigator as any).msSaveBlob(blob, filename);
+        return true;
+      }
+      
       // Create a temporary URL for the blob
       const url = URL.createObjectURL(blob);
+      console.log('Created blob URL:', url);
       
       // Create a temporary download link
       const link = document.createElement('a');
@@ -33,17 +50,44 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
       link.download = filename;
       link.style.display = 'none';
       
-      // Append to body, click, then remove
+      // Try to trigger download
       document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
       
-      // Clean up the object URL
-      setTimeout(() => URL.revokeObjectURL(url), 100);
+      // For some browsers, we need to trigger a click event
+      if (document.createEvent) {
+        const event = document.createEvent('MouseEvents');
+        event.initEvent('click', true, true);
+        link.dispatchEvent(event);
+      } else {
+        link.click();
+      }
+      
+      document.body.removeChild(link);
+      console.log('Download initiated successfully');
+      
+      // Clean up the object URL after a short delay
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+        console.log('Blob URL cleaned up');
+      }, 1000);
       
       return true;
     } catch (error) {
       console.error('Download failed:', error);
+      
+      // Fallback: try opening blob in new window
+      try {
+        console.log('Trying fallback: opening in new window');
+        const url = URL.createObjectURL(blob);
+        const newWindow = window.open(url, '_blank');
+        if (newWindow) {
+          setTimeout(() => URL.revokeObjectURL(url), 10000);
+          return true;
+        }
+      } catch (fallbackError) {
+        console.error('Fallback also failed:', fallbackError);
+      }
+      
       return false;
     }
   };
@@ -53,6 +97,8 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
     
     setExportingKML(true);
     try {
+      console.log('Starting KML export for', features.length, 'features');
+      
       const blob = await apiClient.exportKML({
         features,
         styleOptions: {
@@ -62,6 +108,8 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
         }
       });
       
+      console.log('KML blob received:', blob);
+      
       // Generate filename with parcel count and timestamp
       const timestamp = new Date().toISOString().split('T')[0];
       const filename = `cadastral-parcels-${features.length}-${timestamp}.kml`;
@@ -70,7 +118,7 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
       if (success) {
         toast.success(`KML file downloaded: ${filename}`);
       } else {
-        throw new Error('Download failed - check browser settings');
+        toast.error('Download failed - please check your browser settings allow downloads from this site');
       }
     } catch (error) {
       console.error('KML export failed:', error);
@@ -85,6 +133,8 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
     
     setExportingKMZ(true);
     try {
+      console.log('Starting KMZ export for', features.length, 'features');
+      
       const blob = await apiClient.exportKMZ({
         features,
         styleOptions: {
@@ -94,6 +144,8 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
         }
       });
       
+      console.log('KMZ blob received:', blob);
+      
       // Generate filename with parcel count and timestamp
       const timestamp = new Date().toISOString().split('T')[0];
       const filename = `cadastral-parcels-${features.length}-${timestamp}.kmz`;
@@ -102,7 +154,7 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
       if (success) {
         toast.success(`KMZ file downloaded: ${filename}`);
       } else {
-        throw new Error('Download failed - check browser settings');
+        toast.error('Download failed - please check your browser settings allow downloads from this site');
       }
     } catch (error) {
       console.error('KMZ export failed:', error);
@@ -117,6 +169,8 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
     
     setExportingGeoTIFF(true);
     try {
+      console.log('Starting GeoTIFF export for', features.length, 'features');
+      
       const blob = await apiClient.exportGeoTIFF({
         features,
         styleOptions: {
@@ -124,6 +178,8 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
           colorByState: true
         }
       });
+      
+      console.log('GeoTIFF blob received:', blob);
       
       // Generate filename with parcel count and timestamp
       const timestamp = new Date().toISOString().split('T')[0];
@@ -133,7 +189,7 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
       if (success) {
         toast.success(`GeoTIFF file downloaded: ${filename}`);
       } else {
-        throw new Error('Download failed - check browser settings');
+        toast.error('Download failed - please check your browser settings allow downloads from this site');
       }
     } catch (error) {
       console.error('GeoTIFF export failed:', error);
@@ -187,6 +243,32 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
         )}
 
         <div className="space-y-3">
+          {/* Test download button for troubleshooting */}
+          {hasFeatures && (
+            <Button
+              onClick={() => {
+                try {
+                  const testContent = `Test download from KML Downloads app\nTimestamp: ${new Date().toISOString()}\nFeatures loaded: ${features.length}`;
+                  const testBlob = new Blob([testContent], { type: 'text/plain' });
+                  const success = downloadFile(testBlob, 'download-test.txt');
+                  if (success) {
+                    toast.success('Test download successful! Your browser settings are working correctly.');
+                  } else {
+                    toast.error('Test download failed - please check your browser download settings.');
+                  }
+                } catch (error) {
+                  console.error('Test download failed:', error);
+                  toast.error('Test download failed - browser may be blocking downloads.');
+                }
+              }}
+              className="w-full justify-start text-xs"
+              variant="ghost"
+              size="sm"
+            >
+              Test Download (Troubleshooting)
+            </Button>
+          )}
+          
           <Button
             onClick={handleExportKML}
             disabled={!hasFeatures || exportingKML || isQuerying}
