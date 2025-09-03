@@ -97,20 +97,35 @@ def _add_features_to_container(container, features: List[Feature], style):
             props = feature.properties
             geometry = feature.geometry
 
-            # Placemark with sidebar name = lotplan only
-            placemark = container.newpolygon(name=_display_name_from_props(props))
+            # --- Sidebar name: lotplan only (fallbacks) ---
+            lotplan = None
+            for key in ("lotplan", "lot_plan", "lot_plan_id"):
+                if hasattr(props, key) and getattr(props, key):
+                    lotplan = str(getattr(props, key))
+                    break
+            if not lotplan:
+                lotplan = str(getattr(props, "name", None) or getattr(props, "id", "Parcel"))
 
-            # 🔕 Hide grey snippet under the name in Places panel
-            placemark.snippet.maxlines = 0      # no snippet displayed
-            placemark.snippet.content = ""      # be explicit
+            # Create placemark with clean sidebar name
+            placemark = container.newpolygon(name=lotplan)
 
-            # 🎈 Popup content: keep ID + Area (and nothing else)
-            placemark.description = _create_popup_description(props)
+            # Hide grey snippet in Google Earth Places panel
+            placemark.snippet.maxlines = 0
+            placemark.snippet.content = ""
 
-            # Apply shared style
+            # Popup: ID + Area only
+            desc_parts = [f"<b>ID:</b> {props.id}<br/>"]
+            if getattr(props, "area_ha", None) is not None:
+                try:
+                    desc_parts.append(f"<b>Area:</b> {float(props.area_ha):.2f} hectares<br/>")
+                except Exception:
+                    desc_parts.append(f"<b>Area:</b> {props.area_ha} hectares<br/>")
+            placemark.description = "<![CDATA[" + "".join(desc_parts) + "]]>"
+
+            # Apply style
             placemark.style = style
 
-            # Geometry
+            # Handle geometry
             if geometry['type'] == 'Polygon':
                 coords = geometry['coordinates']
                 if coords:
@@ -128,8 +143,10 @@ def _add_features_to_container(container, features: List[Feature], style):
                         for inner_coords in poly_coords[1:]:
                             placemark.innerboundaryis = inner_coords
 
-            # ExtendedData is fine to include; it does not show in the sidebar
-            _add_extended_data(placemark, props)
+            # Keep ExtendedData (doesn't show in sidebar)
+            for key, value in props.__dict__.items():
+                if value is not None:
+                    placemark.extendeddata.newdata(name=key, value=str(value))
 
         except Exception as e:
             logger.warning(f"Failed to add feature {getattr(feature.properties, 'id', 'unknown')} to KML: {e}")
@@ -137,4 +154,17 @@ def _add_features_to_container(container, features: List[Feature], style):
 
 
 def _create_popup_description(properties) -> str:
-    """Create HTML description for the popup balloon (
+    """Create HTML description for the popup balloon (ID + Area only)."""
+    parts = [f"<b>ID:</b> {properties.id}<br/>"]
+    if getattr(properties, "area_ha", None):
+        parts.append(f"<b>Area:</b> {properties.area_ha:.2f} hectares<br/>")
+    # If you also want to keep state in the popup, uncomment next line:
+    # parts.append(f"<b>State:</b> {properties.state}<br/>")
+    return "<![CDATA[" + "".join(parts) + "]]>"
+
+
+def _add_extended_data(placemark, properties):
+    """Add ExtendedData to KML placemark (doesn't affect sidebar)."""
+    for key, value in properties.__dict__.items():
+        if value is not None:
+            placemark.extendeddata.newdata(name=key, value=str(value))
