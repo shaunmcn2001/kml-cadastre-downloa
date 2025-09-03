@@ -57,8 +57,8 @@ class ApiClient {
             detail: response.statusText 
           };
         }
-        debugEntry.error = errorData.error;
-        throw new Error(errorData.detail || errorData.error);
+        debugEntry.error = `${errorData.error}: ${errorData.detail}`;
+        throw new Error(`Backend error (${response.status}): ${errorData.detail || errorData.error}`);
       }
 
       const result = responseType === 'blob' 
@@ -67,8 +67,22 @@ class ApiClient {
 
       return result as T;
     } catch (error) {
-      debugEntry.error = error instanceof Error ? error.message : 'Unknown error';
-      throw error;
+      let errorMessage: string;
+      
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          errorMessage = 'Request timeout - backend took too long to respond';
+        } else if (error.message.includes('Failed to fetch')) {
+          errorMessage = `Network error - cannot reach backend at ${config.BACKEND_URL}. Check if the service is running and CORS is configured.`;
+        } else {
+          errorMessage = error.message;
+        }
+      } else {
+        errorMessage = 'Unknown error';
+      }
+      
+      debugEntry.error = errorMessage;
+      throw new Error(errorMessage);
     } finally {
       clearTimeout(timeout);
       this.debugEntries.push(debugEntry);

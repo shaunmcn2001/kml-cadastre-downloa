@@ -15,12 +15,18 @@ export async function loadConfig(): Promise<Config> {
       throw new Error(`Failed to load config: ${response.status}`);
     }
     config = await response.json();
+    
+    // Validate that the backend URL is accessible
+    console.log('Loaded config:', config);
     return config!;
   } catch (error) {
     console.error('Failed to load config, using defaults:', error);
+    // Check if we're in development vs production
+    const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     config = {
-      BACKEND_URL: 'http://localhost:8000'
+      BACKEND_URL: isDev ? 'http://localhost:8000' : 'https://kml-cadastre-downloa.onrender.com'
     };
+    console.log('Using fallback config:', config);
     return config;
   }
 }

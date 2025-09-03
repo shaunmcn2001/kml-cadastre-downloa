@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Toaster } from '@/components/ui/sonner';
+import { Button } from '@/components/ui/button';
+import { WifiX } from '@phosphor-icons/react';
 import { ParcelInputPanel } from './components/ParcelInputPanel';
 import { MapView } from './components/MapView';
 import { ExportPanel } from './components/ExportPanel';
 import { DebugPanel } from './components/DebugPanel';
+import { ConnectionTroubleshooter } from './components/ConnectionTroubleshooter';
 import { loadConfig } from './lib/config';
 import { apiClient } from './lib/api';
 import { toast } from 'sonner';
@@ -13,18 +16,54 @@ function App() {
   const [features, setFeatures] = useState<ParcelFeature[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isQuerying, setIsQuerying] = useState(false);
+  const [backendError, setBackendError] = useState<string | null>(null);
+
+  const testBackendConnection = async () => {
+    try {
+      setIsLoading(true);
+      setBackendError(null);
+      await apiClient.healthCheck();
+      setIsLoading(false);
+      toast.success('Backend connection restored');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setBackendError(errorMessage);
+      setIsLoading(false);
+      toast.error('Connection test failed');
+    }
+  };
 
   // Load config on app start
   useEffect(() => {
     const initializeApp = async () => {
       try {
         await loadConfig();
-        // Test backend connectivity
-        await apiClient.healthCheck();
-        setIsLoading(false);
+        
+        // Test backend connectivity with retry
+        let retryCount = 0;
+        const maxRetries = 3;
+        
+        while (retryCount < maxRetries) {
+          try {
+            await apiClient.healthCheck();
+            setIsLoading(false);
+            setBackendError(null);
+            return;
+          } catch (error) {
+            retryCount++;
+            if (retryCount < maxRetries) {
+              console.log(`Health check failed, retrying (${retryCount}/${maxRetries})...`);
+              await new Promise(resolve => setTimeout(resolve, 2000 * retryCount)); // Exponential backoff
+            } else {
+              throw error; // Re-throw after max retries
+            }
+          }
+        }
       } catch (error) {
         console.error('Failed to initialize app:', error);
-        toast.error('Failed to connect to backend service');
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        setBackendError(errorMessage);
+        toast.error('Failed to connect to backend service - check Debug Panel for details');
         setIsLoading(false);
       }
     };
@@ -36,6 +75,8 @@ function App() {
     if (parcelIds.length === 0) return;
 
     setIsQuerying(true);
+    setBackendError(null); // Clear any previous backend errors
+    
     try {
       const response = await apiClient.queryParcels({
         states,
@@ -55,7 +96,14 @@ function App() {
       }
     } catch (error) {
       console.error('Query failed:', error);
-      toast.error(`Query failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
+      // Check if this is a network/connection error
+      if (errorMessage.includes('Network error') || errorMessage.includes('Failed to fetch')) {
+        setBackendError(errorMessage);
+      }
+      
+      toast.error(`Query failed: ${errorMessage}`);
       setFeatures([]);
     } finally {
       setIsQuerying(false);
@@ -71,6 +119,16 @@ function App() {
           <p className="text-muted-foreground">Connecting to backend service...</p>
         </div>
       </div>
+    );
+  }
+
+  // Show connection troubleshooter if there's a backend error
+  if (backendError) {
+    return (
+      <>
+        <ConnectionTroubleshooter onConnectionSuccess={() => setBackendError(null)} />
+        <Toaster />
+      </>
     );
   }
 

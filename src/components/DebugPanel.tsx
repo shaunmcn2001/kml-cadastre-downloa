@@ -1,13 +1,32 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { ChevronDown, Bug, Trash, Clock } from '@phosphor-icons/react';
+import { ChevronDown, Bug, Trash, Clock, Wifi, WifiX } from '@phosphor-icons/react';
 import { useDebugPanel } from '../hooks/useDebugPanel';
+import { apiClient } from '../lib/api';
+import { getConfig } from '../lib/config';
+import { toast } from 'sonner';
 
 export function DebugPanel() {
   const { debugEntries, isVisible, toggleVisibility, clearEntries } = useDebugPanel();
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'unknown' | 'success' | 'failed'>('unknown');
+
+  const testConnection = async () => {
+    setIsTestingConnection(true);
+    try {
+      await apiClient.healthCheck();
+      setConnectionStatus('success');
+      toast.success('Backend connection successful');
+    } catch (error) {
+      setConnectionStatus('failed');
+      toast.error(`Connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsTestingConnection(false);
+    }
+  };
 
   const formatDuration = (duration?: number) => {
     if (!duration) return 'N/A';
@@ -21,6 +40,8 @@ export function DebugPanel() {
     if (status >= 400) return 'destructive';
     return 'secondary';
   };
+
+  const config = getConfig();
 
   return (
     <div className="border-t">
@@ -42,6 +63,38 @@ export function DebugPanel() {
         
         <CollapsibleContent className="px-4 pb-4">
           <div className="space-y-3">
+            {/* Connection Status & Test */}
+            <div className="bg-muted/30 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  {connectionStatus === 'success' && <Wifi className="w-4 h-4 text-accent" />}
+                  {connectionStatus === 'failed' && <WifiX className="w-4 h-4 text-destructive" />}
+                  {connectionStatus === 'unknown' && <Wifi className="w-4 h-4 text-muted-foreground" />}
+                  <span className="text-sm font-medium">Backend Connection</span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={testConnection}
+                  disabled={isTestingConnection}
+                >
+                  {isTestingConnection ? 'Testing...' : 'Test'}
+                </Button>
+              </div>
+              <div className="text-xs space-y-1">
+                <div className="font-mono bg-muted p-2 rounded break-all">
+                  {config.BACKEND_URL}
+                </div>
+                <div className="text-muted-foreground">
+                  {connectionStatus === 'success' && '✓ Backend is responding'}
+                  {connectionStatus === 'failed' && '✗ Cannot reach backend - check service status'}
+                  {connectionStatus === 'unknown' && 'Click "Test" to check connectivity'}
+                </div>
+              </div>
+            </div>
+            
+            <Separator />
+
             <div className="flex justify-between items-center">
               <span className="text-sm font-medium">API Request History</span>
               <Button
