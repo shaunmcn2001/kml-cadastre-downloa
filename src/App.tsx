@@ -155,22 +155,22 @@ function App() {
         </div>
 
         {/* Control Panel - Right Side */}
-        <div className="w-96 border-l bg-card flex flex-col">
-          <div className="p-4">
-            <ParcelInputPanel 
-              onQueryParcels={handleQueryParcels}
-              isQuerying={isQuerying}
-            />
+        <div className="w-96 border-l bg-card flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto scrollbar-thin">
+            <div className="p-4 space-y-6">
+              <ParcelInputPanel 
+                onQueryParcels={handleQueryParcels}
+                isQuerying={isQuerying}
+              />
+
+              <ExportPanel 
+                features={features}
+                isQuerying={isQuerying}
+              />
+            </div>
           </div>
 
-          <div className="p-4">
-            <ExportPanel 
-              features={features}
-              isQuerying={isQuerying}
-            />
-          </div>
-
-          <div className="mt-auto">
+          <div className="border-t bg-card">
             <DebugPanel />
           </div>
         </div>

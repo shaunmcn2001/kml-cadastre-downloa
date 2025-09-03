@@ -3,6 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Label } from '@/components/ui/label';
 import { Download, Package, Image, AlertTriangle } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { apiClient } from '../lib/api';
@@ -22,14 +23,29 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
   const totalArea = features.reduce((sum, f) => sum + (f.properties.area_ha || 0), 0);
 
   const downloadFile = (blob: Blob, filename: string) => {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      // Create a temporary URL for the blob
+      const url = URL.createObjectURL(blob);
+      
+      // Create a temporary download link
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.style.display = 'none';
+      
+      // Append to body, click, then remove
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Clean up the object URL
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+      
+      return true;
+    } catch (error) {
+      console.error('Download failed:', error);
+      return false;
+    }
   };
 
   const handleExportKML = async () => {
@@ -46,11 +62,16 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
         }
       });
       
+      // Generate filename with parcel count and timestamp
       const timestamp = new Date().toISOString().split('T')[0];
-      const filename = `parcels-${timestamp}.kml`;
-      downloadFile(blob, filename);
+      const filename = `cadastral-parcels-${features.length}-${timestamp}.kml`;
       
-      toast.success(`KML file downloaded: ${filename}`);
+      const success = downloadFile(blob, filename);
+      if (success) {
+        toast.success(`KML file downloaded: ${filename}`);
+      } else {
+        throw new Error('Download failed - check browser settings');
+      }
     } catch (error) {
       console.error('KML export failed:', error);
       toast.error(`KML export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -73,11 +94,16 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
         }
       });
       
+      // Generate filename with parcel count and timestamp
       const timestamp = new Date().toISOString().split('T')[0];
-      const filename = `parcels-${timestamp}.kmz`;
-      downloadFile(blob, filename);
+      const filename = `cadastral-parcels-${features.length}-${timestamp}.kmz`;
       
-      toast.success(`KMZ file downloaded: ${filename}`);
+      const success = downloadFile(blob, filename);
+      if (success) {
+        toast.success(`KMZ file downloaded: ${filename}`);
+      } else {
+        throw new Error('Download failed - check browser settings');
+      }
     } catch (error) {
       console.error('KMZ export failed:', error);
       toast.error(`KMZ export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -99,11 +125,16 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
         }
       });
       
+      // Generate filename with parcel count and timestamp
       const timestamp = new Date().toISOString().split('T')[0];
-      const filename = `parcels-${timestamp}.tif`;
-      downloadFile(blob, filename);
+      const filename = `cadastral-parcels-${features.length}-${timestamp}.tif`;
       
-      toast.success(`GeoTIFF file downloaded: ${filename}`);
+      const success = downloadFile(blob, filename);
+      if (success) {
+        toast.success(`GeoTIFF file downloaded: ${filename}`);
+      } else {
+        throw new Error('Download failed - check browser settings');
+      }
     } catch (error) {
       console.error('GeoTIFF export failed:', error);
       toast.error(`GeoTIFF export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -210,8 +241,4 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
       </CardContent>
     </Card>
   );
-}
-
-function Label({ className, children }: { className?: string; children: React.ReactNode }) {
-  return <div className={className}>{children}</div>;
 }

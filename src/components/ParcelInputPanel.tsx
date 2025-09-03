@@ -45,7 +45,7 @@ LOT 13 DP1242624
   };
 
   return (
-    <Card className="h-full">
+    <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Database className="w-5 h-5 text-primary" />
