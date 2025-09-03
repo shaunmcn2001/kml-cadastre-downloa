@@ -138,7 +138,7 @@ function App() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-foreground">KML Downloads</h1>
-            <p className="text-sm text-muted-foreground">Australian Cadastral Data Extraction Tool</p>
+
           </div>
           <div className="text-xs text-muted-foreground">
             NSW • QLD • SA
