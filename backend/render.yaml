@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: kmldownloads-backend
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: FRONTEND_ORIGIN
+        value: https://your-username.github.io/your-repo-name
+      - key: LOG_LEVEL
+        value: INFO
+      - key: CACHE_TTL
+        value: "900"
+      - key: MAX_IDS_PER_CHUNK
+        value: "50"
+      - key: ARCGIS_TIMEOUT_S
+        value: "20"
+    healthCheckPath: /healthz

@@ -1,0 +1,217 @@
+import React from 'react';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { Download, Package, Image, AlertTriangle } from '@phosphor-icons/react';
+import { toast } from 'sonner';
+import { apiClient } from '../lib/api';
+import type { ParcelFeature } from '../lib/types';
+
+interface ExportPanelProps {
+  features: ParcelFeature[];
+  isQuerying: boolean;
+}
+
+export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
+  const [exportingKML, setExportingKML] = React.useState(false);
+  const [exportingKMZ, setExportingKMZ] = React.useState(false);
+  const [exportingGeoTIFF, setExportingGeoTIFF] = React.useState(false);
+
+  const hasFeatures = features.length > 0;
+  const totalArea = features.reduce((sum, f) => sum + (f.properties.area_ha || 0), 0);
+
+  const downloadFile = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportKML = async () => {
+    if (!hasFeatures) return;
+    
+    setExportingKML(true);
+    try {
+      const blob = await apiClient.exportKML({
+        features,
+        styleOptions: {
+          fillOpacity: 0.3,
+          strokeWidth: 2,
+          colorByState: true
+        }
+      });
+      
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `parcels-${timestamp}.kml`;
+      downloadFile(blob, filename);
+      
+      toast.success(`KML file downloaded: ${filename}`);
+    } catch (error) {
+      console.error('KML export failed:', error);
+      toast.error(`KML export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setExportingKML(false);
+    }
+  };
+
+  const handleExportKMZ = async () => {
+    if (!hasFeatures) return;
+    
+    setExportingKMZ(true);
+    try {
+      const blob = await apiClient.exportKMZ({
+        features,
+        styleOptions: {
+          fillOpacity: 0.3,
+          strokeWidth: 2,
+          colorByState: true
+        }
+      });
+      
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `parcels-${timestamp}.kmz`;
+      downloadFile(blob, filename);
+      
+      toast.success(`KMZ file downloaded: ${filename}`);
+    } catch (error) {
+      console.error('KMZ export failed:', error);
+      toast.error(`KMZ export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setExportingKMZ(false);
+    }
+  };
+
+  const handleExportGeoTIFF = async () => {
+    if (!hasFeatures) return;
+    
+    setExportingGeoTIFF(true);
+    try {
+      const blob = await apiClient.exportGeoTIFF({
+        features,
+        styleOptions: {
+          fillOpacity: 1.0,
+          colorByState: true
+        }
+      });
+      
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `parcels-${timestamp}.tif`;
+      downloadFile(blob, filename);
+      
+      toast.success(`GeoTIFF file downloaded: ${filename}`);
+    } catch (error) {
+      console.error('GeoTIFF export failed:', error);
+      toast.error(`GeoTIFF export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setExportingGeoTIFF(false);
+    }
+  };
+
+  const stateBreakdown = features.reduce((acc, feature) => {
+    const state = feature.properties.state;
+    acc[state] = (acc[state] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Download className="w-5 h-5 text-primary" />
+          Export Data
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {hasFeatures && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <Label className="text-muted-foreground">Total Parcels</Label>
+                <div className="font-semibold">{features.length}</div>
+              </div>
+              <div>
+                <Label className="text-muted-foreground">Total Area</Label>
+                <div className="font-semibold">{totalArea.toFixed(2)} ha</div>
+              </div>
+            </div>
+            
+            <div>
+              <Label className="text-muted-foreground text-sm">By State</Label>
+              <div className="flex gap-2 mt-1">
+                {Object.entries(stateBreakdown).map(([state, count]) => (
+                  <Badge key={state} variant="secondary">
+                    {state}: {count}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+            
+            <Separator />
+          </div>
+        )}
+
+        <div className="space-y-3">
+          <Button
+            onClick={handleExportKML}
+            disabled={!hasFeatures || exportingKML || isQuerying}
+            className="w-full justify-start"
+            variant="outline"
+          >
+            <Package className="w-4 h-4 mr-2" />
+            {exportingKML ? 'Generating KML...' : 'Download KML'}
+          </Button>
+
+          <Button
+            onClick={handleExportKMZ}
+            disabled={!hasFeatures || exportingKMZ || isQuerying}
+            className="w-full justify-start"
+            variant="outline"
+          >
+            <Package className="w-4 h-4 mr-2" />
+            {exportingKMZ ? 'Generating KMZ...' : 'Download KMZ'}
+          </Button>
+
+          <Button
+            onClick={handleExportGeoTIFF}
+            disabled={!hasFeatures || exportingGeoTIFF || isQuerying}
+            className="w-full justify-start"
+            variant="outline"
+          >
+            <Image className="w-4 h-4 mr-2" />
+            {exportingGeoTIFF ? 'Generating GeoTIFF...' : 'Download GeoTIFF (Beta)'}
+          </Button>
+        </div>
+
+        {!hasFeatures && !isQuerying && (
+          <div className="text-center py-6 text-muted-foreground">
+            <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p className="text-sm">No data to export</p>
+            <p className="text-xs mt-1">Query parcels first to enable downloads</p>
+          </div>
+        )}
+
+        {isQuerying && (
+          <div className="text-center py-6 text-muted-foreground">
+            <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
+            <p className="text-sm">Preparing export data...</p>
+          </div>
+        )}
+
+        <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t">
+          <p><strong>KML:</strong> For Google Earth, basic GIS software</p>
+          <p><strong>KMZ:</strong> Compressed KML with styling</p>
+          <p><strong>GeoTIFF:</strong> Raster format for advanced GIS analysis</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Label({ className, children }: { className?: string; children: React.ReactNode }) {
+  return <div className={className}>{children}</div>;
+}
