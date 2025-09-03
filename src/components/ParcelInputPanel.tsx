@@ -115,7 +115,7 @@ LOT 13 DP1242624
             placeholder={`Enter ${inputState.selectedState} parcel identifiers (one per line)...`}
             value={inputState.rawInput}
             onChange={(e) => updateRawInput(e.target.value)}
-            className="mt-2 min-h-40 max-h-60 font-mono text-sm resize-none scrollbar-thin"
+            className="mt-2 min-h-32 max-h-48 font-mono text-sm resize-none scrollbar-thin"
           />
         </div>
 
@@ -182,7 +182,7 @@ LOT 13 DP1242624
         {hasAttemptedQuery && inputState.validParcels.length > 0 && (
           <div className="text-sm text-muted-foreground">
             <p className="font-medium mb-1">Valid Parcels to Query:</p>
-            <div className="max-h-40 overflow-y-auto bg-muted p-2 rounded text-xs font-mono space-y-0.5 scrollbar-thin">
+            <div className="max-h-32 overflow-y-auto bg-muted p-2 rounded text-xs font-mono space-y-0.5 scrollbar-thin">
               {inputState.validParcels.slice(0, 50).map((parcel, i) => (
                 <div key={i}>{parcel.id}</div>
               ))}

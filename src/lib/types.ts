@@ -60,6 +60,8 @@ export interface ExportRequest {
     fillOpacity?: number;
     strokeWidth?: number;
     colorByState?: boolean;
+    googleEarthOptimized?: boolean;
+    version?: string;
   };
 }
 

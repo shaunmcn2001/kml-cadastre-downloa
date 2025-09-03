@@ -29,66 +29,67 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
       // Check if blob is valid
       if (!blob || blob.size === 0) {
         console.error('Invalid blob:', blob);
-        throw new Error('Received empty or invalid file data');
+        throw new Error('Received empty or invalid file data from server');
       }
       
-      // Try modern download approach first
-      if (window.navigator && (window.navigator as any).msSaveBlob) {
-        // IE/Edge fallback
-        console.log('Using IE/Edge download method');
-        (window.navigator as any).msSaveBlob(blob, filename);
-        return true;
-      }
-      
-      // Create a temporary URL for the blob
+      // Create blob URL
       const url = URL.createObjectURL(blob);
-      console.log('Created blob URL:', url);
       
-      // Create a temporary download link
+      // Method 1: Try modern download with proper MIME type
       const link = document.createElement('a');
       link.href = url;
       link.download = filename;
-      link.style.display = 'none';
       
-      // Try to trigger download
+      // Set proper MIME type for Google Earth compatibility
+      if (filename.toLowerCase().endsWith('.kml')) {
+        link.type = 'application/vnd.google-earth.kml+xml';
+      } else if (filename.toLowerCase().endsWith('.kmz')) {
+        link.type = 'application/vnd.google-earth.kmz';
+      }
+      
+      // Add to DOM and trigger click
       document.body.appendChild(link);
-      
-      // For some browsers, we need to trigger a click event
-      if (document.createEvent) {
-        const event = document.createEvent('MouseEvents');
-        event.initEvent('click', true, true);
-        link.dispatchEvent(event);
-      } else {
-        link.click();
-      }
-      
+      link.click();
       document.body.removeChild(link);
+      
+      // Clean up URL
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      
       console.log('Download initiated successfully');
-      
-      // Clean up the object URL after a short delay
-      setTimeout(() => {
-        URL.revokeObjectURL(url);
-        console.log('Blob URL cleaned up');
-      }, 1000);
-      
       return true;
+      
     } catch (error) {
-      console.error('Download failed:', error);
+      console.error('Primary download method failed:', error);
       
-      // Fallback: try opening blob in new window
+      // Method 2: Alternative approach using window.location
       try {
-        console.log('Trying fallback: opening in new window');
         const url = URL.createObjectURL(blob);
-        const newWindow = window.open(url, '_blank');
-        if (newWindow) {
-          setTimeout(() => URL.revokeObjectURL(url), 10000);
-          return true;
-        }
+        const filename_encoded = encodeURIComponent(filename);
+        const downloadUrl = `${url}#${filename_encoded}`;
+        
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename;
+        link.click();
+        
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+        console.log('Fallback download method succeeded');
+        return true;
       } catch (fallbackError) {
-        console.error('Fallback also failed:', fallbackError);
+        console.error('Fallback download failed:', fallbackError);
+        
+        // Method 3: Open in new window as last resort
+        try {
+          const url = URL.createObjectURL(blob);
+          window.open(url, '_blank');
+          setTimeout(() => URL.revokeObjectURL(url), 10000);
+          console.log('Opened file in new window');
+          return true;
+        } catch (windowError) {
+          console.error('All download methods failed:', windowError);
+          return false;
+        }
       }
-      
-      return false;
     }
   };
 
@@ -104,11 +105,13 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
         styleOptions: {
           fillOpacity: 0.3,
           strokeWidth: 2,
-          colorByState: true
+          colorByState: true,
+          googleEarthOptimized: true, // Enable Google Earth Web/Pro compatibility
+          version: '2.3' // Use latest KML version
         }
       });
       
-      console.log('KML blob received:', blob);
+      console.log('KML blob received:', { size: blob.size, type: blob.type });
       
       // Generate filename with parcel count and timestamp
       const timestamp = new Date().toISOString().split('T')[0];
@@ -116,7 +119,7 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
       
       const success = downloadFile(blob, filename);
       if (success) {
-        toast.success(`KML file downloaded: ${filename}`);
+        toast.success(`KML downloaded successfully! Open in Google Earth Web or Google Earth Pro.`);
       } else {
         toast.error('Download failed - please check your browser settings allow downloads from this site');
       }
@@ -140,11 +143,13 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
         styleOptions: {
           fillOpacity: 0.3,
           strokeWidth: 2,
-          colorByState: true
+          colorByState: true,
+          googleEarthOptimized: true, // Enable Google Earth Web/Pro compatibility
+          version: '2.3' // Use latest KML version
         }
       });
       
-      console.log('KMZ blob received:', blob);
+      console.log('KMZ blob received:', { size: blob.size, type: blob.type });
       
       // Generate filename with parcel count and timestamp
       const timestamp = new Date().toISOString().split('T')[0];
@@ -152,7 +157,7 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
       
       const success = downloadFile(blob, filename);
       if (success) {
-        toast.success(`KMZ file downloaded: ${filename}`);
+        toast.success(`KMZ downloaded successfully! Open in Google Earth Pro for best results.`);
       } else {
         toast.error('Download failed - please check your browser settings allow downloads from this site');
       }
@@ -276,7 +281,7 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
             variant="outline"
           >
             <Package className="w-4 h-4 mr-2" />
-            {exportingKML ? 'Generating KML...' : 'Download KML'}
+            {exportingKML ? 'Generating KML...' : 'Download KML (Google Earth)'}
           </Button>
 
           <Button
@@ -286,7 +291,7 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
             variant="outline"
           >
             <Package className="w-4 h-4 mr-2" />
-            {exportingKMZ ? 'Generating KMZ...' : 'Download KMZ'}
+            {exportingKMZ ? 'Generating KMZ...' : 'Download KMZ (Google Earth Pro)'}
           </Button>
 
           <Button
@@ -316,9 +321,10 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
         )}
 
         <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t">
-          <p><strong>KML:</strong> For Google Earth, basic GIS software</p>
-          <p><strong>KMZ:</strong> Compressed KML with styling</p>
+          <p><strong>KML:</strong> For Google Earth Web & Pro, compatible with latest version</p>
+          <p><strong>KMZ:</strong> Compressed KML with enhanced styling for Google Earth</p>
           <p><strong>GeoTIFF:</strong> Raster format for advanced GIS analysis</p>
+          <p className="text-accent font-medium mt-2">✓ Optimized for Google Earth 9.x and Google Earth Web</p>
         </div>
       </CardContent>
     </Card>

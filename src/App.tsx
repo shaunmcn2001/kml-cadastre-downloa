@@ -115,7 +115,7 @@ function App() {
       <div className="h-screen flex items-center justify-center bg-background">
         <div className="text-center">
           <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-          <h2 className="text-lg font-semibold text-foreground mb-2">KML Downloads</h2>
+          <h2 className="text-lg font-semibold text-foreground mb-2">KML Downloads for Google Earth</h2>
           <p className="text-muted-foreground">Connecting to backend service...</p>
         </div>
       </div>
@@ -138,7 +138,7 @@ function App() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-foreground">KML Downloads</h1>
-
+            <p className="text-xs text-muted-foreground mt-0.5">Optimized for Google Earth Web & Pro</p>
           </div>
           <div className="text-xs text-muted-foreground">
             NSW • QLD • SA
@@ -152,7 +152,7 @@ function App() {
         </div>
 
         {/* Control Panel - Right Side */}
-        <div className="w-96 border-l bg-card flex flex-col overflow-hidden">
+        <div className="w-96 border-l bg-card flex flex-col">
           <div className="flex-1 overflow-y-auto scrollbar-thin">
             <div className="p-4 space-y-6">
               <ParcelInputPanel 
