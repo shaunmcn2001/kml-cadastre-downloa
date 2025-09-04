@@ -22,17 +22,21 @@ body {
 }
 
 .app-shell {
-  min-height: 100%;
-  padding: 24px;
+  height: 100vh;
+  padding: 12px;
   box-sizing: border-box;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 20px;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-shrink: 0;
 }
 
 .app-title {
@@ -49,7 +53,9 @@ body {
 .grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 16px;
+  gap: 8px;
+  flex: 1;
+  overflow: hidden;
 }
 
 @media (min-width: 900px) {
@@ -67,6 +73,8 @@ body {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .card:hover {
@@ -76,9 +84,10 @@ body {
 .card-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
+  gap: 8px;
+  padding: 8px 12px;
   border-bottom: 1px solid #182330;
+  flex-shrink: 0;
 }
 
 .dot {
@@ -100,16 +109,14 @@ body {
 }
 
 .card-body {
-  padding: 14px 16px;
-}
-
-.map-slot, .search-slot, .export-slot {
-  min-height: 320px;
+  padding: 10px 12px;
+  flex: 1;
+  overflow: auto;
 }
 
 @media (min-width: 900px) {
-  .map-slot {
-    min-height: 540px;
+  .grid {
+    grid-template-rows: 1fr 1fr;
   }
 }
 
@@ -153,11 +160,7 @@ body {
 
 /* Responsive grid spans */
 @media (min-width: 900px) {
-  .map-card {
-    grid-column: span 8;
-  }
-  
-  .search-card, .export-card {
-    grid-column: span 4;
+  .map-card, .search-card, .export-card, .debug-card {
+    grid-column: span 6;
   }
 }

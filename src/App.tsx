@@ -148,7 +148,7 @@ function App() {
       </header>
 
       <main className="grid">
-        {/* MAP: spans 8 on desktop */}
+        {/* MAP: spans 6 on desktop */}
         <section className="card map-card" style={{ gridColumn: "span 12" }}>
           <div className="card-header">
             <span className="dot"/>
@@ -162,7 +162,7 @@ function App() {
           </div>
         </section>
 
-        {/* SEARCH: spans 4 on desktop */}
+        {/* SEARCH: spans 6 on desktop */}
         <section className="card search-card" style={{ gridColumn: "span 12" }}>
           <div className="card-header">
             <span className="dot"/>
@@ -179,7 +179,7 @@ function App() {
           </div>
         </section>
 
-        {/* EXPORT: spans 4 on desktop */}
+        {/* EXPORT: spans 6 on desktop */}
         <section className="card export-card" style={{ gridColumn: "span 12" }}>
           <div className="card-header">
             <span className="dot"/>
@@ -196,8 +196,8 @@ function App() {
           </div>
         </section>
 
-        {/* Debug Panel - Hidden in glassmorphism layout but accessible */}
-        <section className="card" style={{ gridColumn: "span 12" }}>
+        {/* Debug Panel: spans 6 on desktop */}
+        <section className="card debug-card" style={{ gridColumn: "span 12" }}>
           <div className="card-header">
             <span className="dot"/>
             <div>
@@ -205,7 +205,7 @@ function App() {
               <div className="card-sub">Connection & performance details</div>
             </div>
           </div>
-          <div className="card-body">
+          <div className="card-body debug-slot">
             <DebugPanel />
           </div>
         </section>
