@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Toaster } from '@/components/ui/sonner';
-import { Button } from '@/components/ui/button';
-import { WifiX } from '@phosphor-icons/react';
 import { ParcelInputPanel } from './components/ParcelInputPanel';
 import { MapView } from './components/MapView';
 import { ExportPanel } from './components/ExportPanel';
