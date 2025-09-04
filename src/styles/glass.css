@@ -1,12 +1,12 @@
 :root {
-  --bg-primary: #0f0f23;
-  --bg-secondary: #1a1a2e;
-  --bg-tertiary: #16213e;
-  --card-bg: rgba(26, 26, 46, 0.8);
+  --bg-primary: #1d1d1e;
+  --bg-secondary: #29292c;
+  --bg-tertiary: #535459;
+  --card-bg: rgba(22, 22, 26, 0.8);
   --card-border: rgba(255, 255, 255, 0.1);
   --accent-primary: #00d4ff;
-  --accent-secondary: #7c3aed;
-  --text-primary: #ffffff;
+  --accent-secondary: #5e5c61;
+  --text-primary: rgba(26, 27, 26, 0);
   --text-secondary: #a1a1aa;
   --text-muted: #6b7280;
   --surface: rgba(255, 255, 255, 0.05);
@@ -25,9 +25,9 @@ html, body, #root {
 
 body {
   background: 
-    radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.3), transparent 50%),
+    radial-gradient(circle at 20% 50%, rgba(78, 78, 78, 0.3), transparent 50%),
     radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.15), transparent 50%),
-    radial-gradient(circle at 40% 90%, rgba(120, 219, 255, 0.1), transparent 50%),
+    radial-gradient(circle at 40% 90%, rgba(23, 23, 23, 0.1), transparent 50%),
     linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
   color: var(--text-primary);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -564,6 +564,11 @@ body {
 }
 
 /* Compact example text boxes */
+.card .bg-muted {
+  padding: 6px 8px;
+  font-size: 9px;
+  line-height: 1.1;
+}/* Compact example text boxes */
 .card .bg-muted {
   padding: 6px 8px;
   font-size: 9px;

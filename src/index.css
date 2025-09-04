@@ -31,25 +31,25 @@
 
 :root {
   /* Dark glassmorphism theme */
-  --background: oklch(55.4% 0.046 257.417);
+  --background: oklch(1.00 0 0);
   --foreground: oklch(0.10 0.005 240);
   --card: oklch(1.00 0 0);
   --card-foreground: oklch(0.10 0.005 240);
   --popover: oklch(1.00 0 0);
   --popover-foreground: oklch(0.10 0.005 240);
   --primary: oklch(0.45 0.15 260);
-  --primary-foreground: oklch(55.4% 0.046 257.417);
-  --secondary: oklch(55.4% 0.046 257.417);
+  --primary-foreground: oklch(1.00 0 0);
+  --secondary: oklch(0.98 0.002 240);
   --secondary-foreground: oklch(0.35 0.008 240);
   --muted: oklch(0.96 0.005 240);
   --muted-foreground: oklch(0.45 0.01 240);
   --accent: oklch(0.10 0.005 240);
-  --accent-foreground: oklch(37.2% 0.044 257.287);
+  --accent-foreground: oklch(1.00 0 0);
   --destructive: oklch(0.55 0.22 25);
   --destructive-foreground: oklch(1.00 0 0);
   --border: oklch(0.88 0.01 240);
   --input: oklch(1.00 0 0);
-  --ring: oklch(0.45 0.15 260);
+  --ring: oklch(98.4% 0.003 247.858);
   
   --radius: 0.5rem;
   
@@ -91,11 +91,13 @@
   
   --shadow-offset-y: 4px;
   
-  --font-sans: Cabin;
+  --font-sans: Inter;
   
   --font-serif: Noto Serif;
   
-  --font-mono: JetBrains Mono;
+  --font-mono: Fira Code;
+  
+  --spacing: 0.3rem;
 }
 
 @theme {

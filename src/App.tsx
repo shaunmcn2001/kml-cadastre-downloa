@@ -143,10 +143,8 @@ function App() {
           <div className="app-sub">Map • Search • Export — additional modules coming (Land Types, Vegetation)</div>
         </div>
         <div className="row right">
-          <span className="badge mono">UI Preview</span>
         </div>
       </header>
-
       <main className="grid">
         {/* MAP: spans 8 on desktop */}
         <section className="card map-card">
@@ -165,7 +163,7 @@ function App() {
         {/* SEARCH: spans 4 on desktop */}
         <section className="card search-card">
           <div className="card-header">
-            <span className="dot"/>
+            <span className="dot text-slate-50 bg-slate-50 border-slate-50"/>
             <div>
               <div className="card-title">Search</div>
               <div className="card-sub">Lot/Plan identifiers</div>
