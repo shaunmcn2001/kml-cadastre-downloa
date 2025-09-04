@@ -1,43 +1,39 @@
 :root {
-  --bg: #0b0f14;
-  --card: #0f141aee;
-  --border: #1f2b37;
+  --card: #0f141
+  --accent: #6ee7ff;
+  --ring: #34d399;
   --accent: #6ee7ff;
   --muted: #8aa0b5;
   --ring: #34d399;
 }
 
 html, body, #root {
-  height: 100%;
-}
+  background:
+ 
 
 body {
   margin: 0;
   background:
     radial-gradient(1200px 800px at 20% -10%, #16202b 0%, transparent 50%),
     radial-gradient(1200px 800px at 120% 10%, #0f1b28 0%, transparent 50%),
-    linear-gradient(180deg, #0b0f14 0%, #0a0d12 100%);
-  color: #e7f1ff;
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
-}
-
-.app-shell {
-  height: 100vh;
-  padding: 12px;
-  box-sizing: border-box;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.app-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  margin-bottom: 10px;
   flex-shrink: 0;
+
+ 
+
+
+  font-size: 13px;
 }
+.grid {
+ 
+
+}
+@media (min-widt
+    grid-template-colu
+}
+.card {
+  background: var(--ca
+ 
 
 .app-title {
   font-size: 20px;
@@ -53,9 +49,7 @@ body {
 .grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 8px;
-  flex: 1;
-  overflow: hidden;
+  gap: 16px;
 }
 
 @media (min-width: 900px) {
@@ -73,8 +67,6 @@ body {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
 }
 
 .card:hover {
@@ -82,12 +74,11 @@ body {
 }
 
 .card-header {
-  display: flex;
+}
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  .grid {
+  padding: 14px 16px;
   border-bottom: 1px solid #182330;
-  flex-shrink: 0;
 }
 
 .dot {
@@ -109,14 +100,20 @@ body {
 }
 
 .card-body {
-  padding: 10px 12px;
-  flex: 1;
-  overflow: auto;
+  padding: 14px 16px;
+}
+
+.map-slot, .search-slot, .export-slot {
+  min-height: 200px;
 }
 
 @media (min-width: 900px) {
-  .grid {
-    grid-template-rows: 1fr 1fr;
+  .map-slot {
+    min-height: 280px;
+
+  
+  .search-slot, .export-slot {
+    min-height: 220px;
   }
 }
 
@@ -125,29 +122,29 @@ body {
   color: #e7f1ff;
   border: 1px solid #1c2835;
   border-radius: 10px;
-  padding: 10px 12px;
+
 }
 
 .card :is(input, select, textarea):focus {
-  outline: none;
+
   border-color: var(--ring);
-  box-shadow: 0 0 0 3px rgba(52, 211, 153, .18);
+
 }
 
 .row {
-  display: flex;
+
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
-}
+
 
 .right {
   margin-left: auto;
-}
 
-.mono {
+
+
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-}
+
 
 .badge {
   font-size: 11px;
@@ -155,12 +152,15 @@ body {
   background: linear-gradient(180deg, #7efcff, #5eead4);
   padding: 6px 10px;
   border-radius: 999px;
-  border: 1px solid #7efcff33;
-}
 
-/* Responsive grid spans */
-@media (min-width: 900px) {
-  .map-card, .search-card, .export-card, .debug-card {
-    grid-column: span 6;
-  }
-}
+
+
+
+
+
+
+
+
+
+
+
