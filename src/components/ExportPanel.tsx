@@ -213,33 +213,33 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
   }, {} as Record<string, number>);
 
   return (
-    <div className="h-full flex flex-col space-y-3">
+    <div className="h-full flex flex-col space-y-2 overflow-hidden">
       <div className="flex-shrink-0">
-        <div className="flex items-center gap-2 mb-3">
-          <Download className="w-4 h-4 text-primary" />
-          <span className="font-medium text-sm">Export Data</span>
+        <div className="flex items-center gap-2 mb-2">
+          <Download className="w-3 h-3 text-primary" />
+          <span className="font-medium text-xs">Export Data</span>
         </div>
       </div>
-      <div className="flex-1 space-y-3 overflow-hidden">
+      <div className="flex-1 space-y-2 overflow-hidden">
         {hasFeatures && (
           <div className="space-y-2 flex-shrink-0">
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div>
                 <Label className="text-muted-foreground text-xs">Parcels</Label>
-                <div className="font-semibold">{features.length}</div>
+                <div className="font-semibold text-xs">{features.length}</div>
               </div>
               <div>
                 <Label className="text-muted-foreground text-xs">Area</Label>
-                <div className="font-semibold">{totalArea.toFixed(1)} ha</div>
+                <div className="font-semibold text-xs">{totalArea.toFixed(1)} ha</div>
               </div>
             </div>
             
             <div>
               <Label className="text-muted-foreground text-xs">By State</Label>
-              <div className="flex gap-1 mt-1">
+              <div className="flex gap-1 mt-1 overflow-hidden">
                 {Object.entries(stateBreakdown).map(([state, count]) => (
-                  <Badge key={state} variant="secondary" className="text-xs px-2 py-0">
-                    {state}: {count}
+                  <Badge key={state} variant="secondary" className="text-xs px-1 py-0">
+                    {state}:{count}
                   </Badge>
                 ))}
               </div>
@@ -247,11 +247,11 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
           </div>
         )}
         
-        <div className="space-y-2 flex-shrink-0">
-          <div>
+        <div className="space-y-2 flex-1">
+          <div className="flex-shrink-0">
             <Label htmlFor="folder-name" className="text-xs font-medium flex items-center gap-1">
               <Folder className="w-3 h-3" />
-              KML Folder Name
+              Folder Name
             </Label>
             <Input
               id="folder-name"
@@ -259,41 +259,16 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
               placeholder="My Parcels"
               value={folderName}
               onChange={(e) => setFolderName(e.target.value)}
-              className="text-xs h-8 mt-1"
-              maxLength={50}
+              className="text-xs h-7 mt-1"
+              maxLength={30}
             />
           </div>
-
-          {/* Test download - only if has features */}
-          {hasFeatures && (
-            <Button
-              onClick={() => {
-                try {
-                  const testContent = `Test download - ${features.length} features - ${new Date().toISOString()}`;
-                  const testBlob = new Blob([testContent], { type: 'text/plain' });
-                  const success = downloadFile(testBlob, 'download-test.txt');
-                  if (success) {
-                    toast.success('Test download successful!');
-                  } else {
-                    toast.error('Test download failed');
-                  }
-                } catch (error) {
-                  toast.error('Download test failed');
-                }
-              }}
-              className="w-full text-xs h-7"
-              variant="ghost"
-              size="sm"
-            >
-              Test Download
-            </Button>
-          )}
           
-          <div className="space-y-2">
+          <div className="space-y-1 flex-shrink-0">
             <Button
               onClick={handleExportKML}
               disabled={!hasFeatures || exportingKML || isQuerying}
-              className="w-full text-xs h-8"
+              className="w-full text-xs h-7"
               variant="outline"
             >
               <Package className="w-3 h-3 mr-1" />
@@ -303,7 +278,7 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
             <Button
               onClick={handleExportKMZ}
               disabled={!hasFeatures || exportingKMZ || isQuerying}
-              className="w-full text-xs h-8"
+              className="w-full text-xs h-7"
               variant="outline"
             >
               <Package className="w-3 h-3 mr-1" />
@@ -313,25 +288,49 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
             <Button
               onClick={handleExportGeoTIFF}
               disabled={!hasFeatures || exportingGeoTIFF || isQuerying}
-              className="w-full text-xs h-8"
+              className="w-full text-xs h-7"
               variant="outline"
             >
               <Image className="w-3 h-3 mr-1" />
               {exportingGeoTIFF ? 'Generating...' : 'GeoTIFF'}
             </Button>
           </div>
+
+          {hasFeatures && (
+            <Button
+              onClick={() => {
+                try {
+                  const testContent = `Test - ${features.length} features - ${new Date().toISOString()}`;
+                  const testBlob = new Blob([testContent], { type: 'text/plain' });
+                  const success = downloadFile(testBlob, 'test.txt');
+                  if (success) {
+                    toast.success('Test download OK!');
+                  } else {
+                    toast.error('Test failed');
+                  }
+                } catch (error) {
+                  toast.error('Download test failed');
+                }
+              }}
+              className="w-full text-xs h-6"
+              variant="ghost"
+              size="sm"
+            >
+              Test Download
+            </Button>
+          )}
         </div>
 
         {!hasFeatures && !isQuerying && (
-          <div className="text-center py-4 text-muted-foreground flex-shrink-0">
-            <AlertTriangle className="w-6 h-6 mx-auto mb-2 opacity-50" />
+          <div className="text-center py-3 text-muted-foreground flex-shrink-0">
+            <AlertTriangle className="w-4 h-4 mx-auto mb-1 opacity-50" />
             <p className="text-xs">No data to export</p>
           </div>
         )}
 
         {isQuerying && (
-          <div className="text-center py-4 text-muted-foreground flex-shrink-0">
-            <div className="animate-spin w-4 h-4 border-2 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
+          <div className="text-center py-3 text-muted-foreground flex-shrink-0">
+            <div className="animate-spin w-3 h-3 border-2 border-primary border-t-transparent rounded-full mx-auto mb-1"></div>
             <p className="text-xs">Loading data...</p>
           </div>
         )}
