@@ -424,17 +424,15 @@ body {
   
   .card-body {
     padding: 16px;
-  }
-  
+  .search-slot,
+  .export-slot,
   .search-slot,
   .export-slot,
   .debug-slot {
-    min-height: 350px;
-    max-height: 350px;
   }
   
   .map-slot {
-    min-height: 350px !important;
+   min-height: 350px !important;
   }
   
   .map-slot > * {
@@ -445,6 +443,8 @@ body {
     min-height: 350px !important;
   }
   
+  .right {
+    margin-left: 0;
   .right {
     margin-left: 0;
     align-self: flex-end;
@@ -462,8 +462,6 @@ body {
   display: none;
 }
 
-/* Leaflet container styling */
-.card .leaflet-container {
   border-radius: 16px;
   box-shadow: inset 0 0 0 1px var(--card-border);
   overflow: hidden !important;
