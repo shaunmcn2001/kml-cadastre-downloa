@@ -454,6 +454,26 @@ body {
 /* Specific compact styling for tabs and alerts */
 .card .tabs-list {
   height: 28px;
+  min-height: 28px;
+  max-height: 28px;
+}
+
+.card [role="tablist"] {
+  height: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+}
+
+.card [role="tab"] {
+  height: 26px !important;
+  min-height: 26px !important;
+  max-height: 26px !important;
+  padding: 4px 8px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px !important;
+  font-weight: 600;
 }
 
 .card .alert {
@@ -471,6 +491,76 @@ body {
   min-height: 60px !important;
   max-height: 80px !important;
   resize: none;
+}
+
+/* Force tabs to be compact */
+.card [data-state="active"] {
+  height: 26px !important;
+  line-height: 1 !important;
+}
+
+.card [data-state="inactive"] {
+  height: 26px !important;
+  line-height: 1 !important;
+}
+
+/* Override default shadcn tab sizes for compact layout */
+.card [data-slot="tabs-list"] {
+  height: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+  padding: 2px !important;
+}
+
+.card [data-slot="tabs-trigger"] {
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  padding: 4px 8px !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  line-height: 1 !important;
+}
+
+/* Additional overrides to constrain tabs */
+.search-slot .grid-cols-3 > * {
+  height: 24px !important;
+  max-height: 24px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 10px !important;
+  padding: 0 8px !important;
+}
+
+.search-slot [role="tablist"] {
+  height: 28px !important;
+  max-height: 28px !important;
+}
+
+.search-slot [role="tab"] {
+  height: 24px !important;
+  max-height: 24px !important;
+  font-size: 10px !important;
+  line-height: 1 !important;
+}
+
+/* Global constraint for ALL tabs in cards to prevent stretching */
+.card .grid-cols-3 {
+  max-height: 28px;
+}
+
+.card .grid-cols-3 > * {
+  height: 24px !important;
+  max-height: 24px !important;
+  min-height: 24px !important;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  line-height: 1;
+  padding: 0 6px;
 }
 
 /* Compact example text boxes */

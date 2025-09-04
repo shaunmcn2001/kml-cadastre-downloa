@@ -61,10 +61,10 @@ LOT 13 DP1242624
             onValueChange={(value) => updateSelectedState(value as ParcelState)}
             className="w-full mt-1"
           >
-            <TabsList className="grid w-full grid-cols-3 text-xs h-7">
-              <TabsTrigger value="NSW" className="text-xs py-1">NSW</TabsTrigger>
-              <TabsTrigger value="QLD" className="text-xs py-1">QLD</TabsTrigger>
-              <TabsTrigger value="SA" className="text-xs py-1">SA</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-3 h-7 max-h-7 min-h-7">
+              <TabsTrigger value="NSW" className="h-6 max-h-6 text-xs py-0 px-2 font-medium">NSW</TabsTrigger>
+              <TabsTrigger value="QLD" className="h-6 max-h-6 text-xs py-0 px-2 font-medium">QLD</TabsTrigger>
+              <TabsTrigger value="SA" className="h-6 max-h-6 text-xs py-0 px-2 font-medium">SA</TabsTrigger>
             </TabsList>
             
             <TabsContent value="NSW" className="space-y-2 mt-2 overflow-hidden">
