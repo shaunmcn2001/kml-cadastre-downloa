@@ -1,8 +1,6 @@
 import React from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Download, Package, Image, AlertTriangle, Folder } from '@phosphor-icons/react';
@@ -215,143 +213,129 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
   }, {} as Record<string, number>);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Download className="w-5 h-5 text-primary" />
-          Export Data
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <div className="h-full flex flex-col space-y-3">
+      <div className="flex-shrink-0">
+        <div className="flex items-center gap-2 mb-3">
+          <Download className="w-4 h-4 text-primary" />
+          <span className="font-medium text-sm">Export Data</span>
+        </div>
+      </div>
+      <div className="flex-1 space-y-3 overflow-hidden">
         {hasFeatures && (
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="space-y-2 flex-shrink-0">
+            <div className="grid grid-cols-2 gap-2 text-xs">
               <div>
-                <Label className="text-muted-foreground">Total Parcels</Label>
+                <Label className="text-muted-foreground text-xs">Parcels</Label>
                 <div className="font-semibold">{features.length}</div>
               </div>
               <div>
-                <Label className="text-muted-foreground">Total Area</Label>
-                <div className="font-semibold">{totalArea.toFixed(2)} ha</div>
+                <Label className="text-muted-foreground text-xs">Area</Label>
+                <div className="font-semibold">{totalArea.toFixed(1)} ha</div>
               </div>
             </div>
             
             <div>
-              <Label className="text-muted-foreground text-sm">By State</Label>
-              <div className="flex gap-2 mt-1">
+              <Label className="text-muted-foreground text-xs">By State</Label>
+              <div className="flex gap-1 mt-1">
                 {Object.entries(stateBreakdown).map(([state, count]) => (
-                  <Badge key={state} variant="secondary">
+                  <Badge key={state} variant="secondary" className="text-xs px-2 py-0">
                     {state}: {count}
                   </Badge>
                 ))}
               </div>
             </div>
-            
-            <Separator />
           </div>
         )}
-
-        <div className="space-y-3">
-          <div className="space-y-2">
-            <Label htmlFor="folder-name" className="text-sm font-medium flex items-center gap-2">
-              <Folder className="w-4 h-4" />
-              KML Folder Name (Optional)
+        
+        <div className="space-y-2 flex-shrink-0">
+          <div>
+            <Label htmlFor="folder-name" className="text-xs font-medium flex items-center gap-1">
+              <Folder className="w-3 h-3" />
+              KML Folder Name
             </Label>
             <Input
               id="folder-name"
               type="text"
-              placeholder="e.g., My Parcels"
+              placeholder="My Parcels"
               value={folderName}
               onChange={(e) => setFolderName(e.target.value)}
-              className="text-sm"
-              maxLength={100}
+              className="text-xs h-8 mt-1"
+              maxLength={50}
             />
-            <p className="text-xs text-muted-foreground">
-              Leave empty for default folder name
-            </p>
           </div>
 
-          <Separator />
-          
-          {/* Test download button for troubleshooting */}
+          {/* Test download - only if has features */}
           {hasFeatures && (
             <Button
               onClick={() => {
                 try {
-                  const testContent = `Test download from KML Downloads app\nTimestamp: ${new Date().toISOString()}\nFeatures loaded: ${features.length}`;
+                  const testContent = `Test download - ${features.length} features - ${new Date().toISOString()}`;
                   const testBlob = new Blob([testContent], { type: 'text/plain' });
                   const success = downloadFile(testBlob, 'download-test.txt');
                   if (success) {
-                    toast.success('Test download successful! Your browser settings are working correctly.');
+                    toast.success('Test download successful!');
                   } else {
-                    toast.error('Test download failed - please check your browser download settings.');
+                    toast.error('Test download failed');
                   }
                 } catch (error) {
-                  console.error('Test download failed:', error);
-                  toast.error('Test download failed - browser may be blocking downloads.');
+                  toast.error('Download test failed');
                 }
               }}
-              className="w-full justify-start text-xs"
+              className="w-full text-xs h-7"
               variant="ghost"
               size="sm"
             >
-              Test Download (Troubleshooting)
+              Test Download
             </Button>
           )}
           
-          <Button
-            onClick={handleExportKML}
-            disabled={!hasFeatures || exportingKML || isQuerying}
-            className="w-full justify-start"
-            variant="outline"
-          >
-            <Package className="w-4 h-4 mr-2" />
-            {exportingKML ? 'Generating KML...' : 'Download KML (Google Earth)'}
-          </Button>
+          <div className="space-y-2">
+            <Button
+              onClick={handleExportKML}
+              disabled={!hasFeatures || exportingKML || isQuerying}
+              className="w-full text-xs h-8"
+              variant="outline"
+            >
+              <Package className="w-3 h-3 mr-1" />
+              {exportingKML ? 'Generating...' : 'KML'}
+            </Button>
 
-          <Button
-            onClick={handleExportKMZ}
-            disabled={!hasFeatures || exportingKMZ || isQuerying}
-            className="w-full justify-start"
-            variant="outline"
-          >
-            <Package className="w-4 h-4 mr-2" />
-            {exportingKMZ ? 'Generating KMZ...' : 'Download KMZ (Google Earth Pro)'}
-          </Button>
+            <Button
+              onClick={handleExportKMZ}
+              disabled={!hasFeatures || exportingKMZ || isQuerying}
+              className="w-full text-xs h-8"
+              variant="outline"
+            >
+              <Package className="w-3 h-3 mr-1" />
+              {exportingKMZ ? 'Generating...' : 'KMZ'}
+            </Button>
 
-          <Button
-            onClick={handleExportGeoTIFF}
-            disabled={!hasFeatures || exportingGeoTIFF || isQuerying}
-            className="w-full justify-start"
-            variant="outline"
-          >
-            <Image className="w-4 h-4 mr-2" />
-            {exportingGeoTIFF ? 'Generating GeoTIFF...' : 'Download GeoTIFF (Beta)'}
-          </Button>
+            <Button
+              onClick={handleExportGeoTIFF}
+              disabled={!hasFeatures || exportingGeoTIFF || isQuerying}
+              className="w-full text-xs h-8"
+              variant="outline"
+            >
+              <Image className="w-3 h-3 mr-1" />
+              {exportingGeoTIFF ? 'Generating...' : 'GeoTIFF'}
+            </Button>
+          </div>
         </div>
 
         {!hasFeatures && !isQuerying && (
-          <div className="text-center py-6 text-muted-foreground">
-            <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">No data to export</p>
-            <p className="text-xs mt-1">Query parcels first to enable downloads</p>
+          <div className="text-center py-4 text-muted-foreground flex-shrink-0">
+            <AlertTriangle className="w-6 h-6 mx-auto mb-2 opacity-50" />
+            <p className="text-xs">No data to export</p>
           </div>
         )}
 
         {isQuerying && (
-          <div className="text-center py-6 text-muted-foreground">
-            <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
-            <p className="text-sm">Preparing export data...</p>
+          <div className="text-center py-4 text-muted-foreground flex-shrink-0">
+            <div className="animate-spin w-4 h-4 border-2 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
+            <p className="text-xs">Loading data...</p>
           </div>
         )}
-
-        <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t">
-          <p><strong>KML:</strong> For Google Earth Web & Pro, compatible with latest version</p>
-          <p><strong>KMZ:</strong> Compressed KML with enhanced styling for Google Earth</p>
-          <p><strong>GeoTIFF:</strong> Raster format for advanced GIS analysis</p>
-          <p className="text-accent font-medium mt-2">✓ Optimized for Google Earth 9.x and Google Earth Web</p>
-        </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

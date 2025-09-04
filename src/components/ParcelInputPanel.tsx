@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -45,15 +44,15 @@ LOT 13 DP1242624
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Database className="w-5 h-5 text-primary" />
-          Parcel Input
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div>
+    <div className="h-full flex flex-col space-y-3">
+      <div className="flex-shrink-0">
+        <div className="flex items-center gap-2 mb-3">
+          <Database className="w-4 h-4 text-primary" />
+          <span className="font-medium text-sm">Parcel Input</span>
+        </div>
+      </div>
+      <div className="flex-1 space-y-3 overflow-hidden">
+        <div className="flex-shrink-0">
           <Label htmlFor="state-select" className="text-sm font-medium">
             Select State
           </Label>
@@ -62,10 +61,10 @@ LOT 13 DP1242624
             onValueChange={(value) => updateSelectedState(value as ParcelState)}
             className="w-full mt-2"
           >
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="NSW">NSW</TabsTrigger>
-              <TabsTrigger value="QLD">QLD</TabsTrigger>
-              <TabsTrigger value="SA">SA</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-3 text-xs h-8">
+              <TabsTrigger value="NSW" className="text-xs">NSW</TabsTrigger>
+              <TabsTrigger value="QLD" className="text-xs">QLD</TabsTrigger>
+              <TabsTrigger value="SA" className="text-xs">SA</TabsTrigger>
             </TabsList>
             
             <TabsContent value="NSW" className="space-y-3 mt-4">
@@ -115,7 +114,7 @@ LOT 13 DP1242624
             placeholder={`Enter ${inputState.selectedState} parcel identifiers (one per line)...`}
             value={inputState.rawInput}
             onChange={(e) => updateRawInput(e.target.value)}
-            className="mt-2 min-h-32 max-h-48 font-mono text-sm resize-none scrollbar-thin"
+            className="mt-2 min-h-20 max-h-24 font-mono text-sm resize-none overflow-hidden"
           />
         </div>
 
@@ -143,8 +142,8 @@ LOT 13 DP1242624
                 <AlertDescription>
                   <div className="space-y-2">
                     <p><strong>{inputState.malformedEntries.length}</strong> malformed entries:</p>
-                    <div className="max-h-32 overflow-y-auto text-xs space-y-1 scrollbar-thin">
-                      {inputState.malformedEntries.map((entry, i) => (
+                    <div className="max-h-24 overflow-hidden text-xs space-y-1">
+                      {inputState.malformedEntries.slice(0, 3).map((entry, i) => (
                         <div key={i} className="flex justify-between items-start gap-2">
                           <span className="font-mono bg-destructive/10 px-1 rounded">
                             {entry.raw}
@@ -154,6 +153,11 @@ LOT 13 DP1242624
                           </span>
                         </div>
                       ))}
+                      {inputState.malformedEntries.length > 3 && (
+                        <div className="text-xs opacity-60 text-center">
+                          ... and {inputState.malformedEntries.length - 3} more
+                        </div>
+                      )}
                     </div>
                   </div>
                 </AlertDescription>
@@ -180,21 +184,21 @@ LOT 13 DP1242624
         </div>
 
         {hasAttemptedQuery && inputState.validParcels.length > 0 && (
-          <div className="text-sm text-muted-foreground">
-            <p className="font-medium mb-1">Valid Parcels to Query:</p>
-            <div className="max-h-32 overflow-y-auto bg-muted p-2 rounded text-xs font-mono space-y-0.5 scrollbar-thin">
-              {inputState.validParcels.slice(0, 50).map((parcel, i) => (
+          <div className="text-xs text-muted-foreground flex-shrink-0">
+            <p className="font-medium mb-1">Valid Parcels ({inputState.validParcels.length}):</p>
+            <div className="max-h-16 overflow-hidden bg-muted p-2 rounded text-xs font-mono">
+              {inputState.validParcels.slice(0, 3).map((parcel, i) => (
                 <div key={i}>{parcel.id}</div>
               ))}
-              {inputState.validParcels.length > 50 && (
-                <div className="text-muted-foreground">
-                  ... and {inputState.validParcels.length - 50} more
+              {inputState.validParcels.length > 3 && (
+                <div className="text-muted-foreground text-center">
+                  ... and {inputState.validParcels.length - 3} more
                 </div>
               )}
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
