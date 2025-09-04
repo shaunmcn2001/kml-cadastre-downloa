@@ -37,6 +37,9 @@ function MapUpdater({ features }: { features: ParcelFeature[] }) {
         features.map(feature => L.geoJSON(feature))
       );
       map.fitBounds(group.getBounds(), { padding: [20, 20] });
+    } else {
+      // Always show Australia when no features
+      map.setView([-25.2744, 133.7751], 5);
     }
   }, [features, map]);
   
@@ -169,40 +172,41 @@ export function MapView({ features, isLoading }: MapViewProps) {
           
           <MapContainer
             ref={mapRef}
-            center={[-27.4698, 153.0251]} // Brisbane
-            zoom={10}
+            center={[-25.2744, 133.7751]} // Center of Australia
+            zoom={5}
             style={{ height: '100%', width: '100%' }}
             className="z-0"
           >
+            {/* Google Satellite imagery via public tile server */}
             <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution='Imagery &copy; Google, Map data &copy; OpenStreetMap contributors'
+              url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
+              maxZoom={20}
             />
             
+            {/* Always include MapUpdater to handle centering */}
+            <MapUpdater features={visibleFeatures} />
+            
             {visibleFeatures.length > 0 && (
-              <>
-                <GeoJSON
-                  key={`features-${visibleFeatures.length}-${JSON.stringify(layerVisibility)}`}
-                  data={{
-                    type: 'FeatureCollection',
-                    features: visibleFeatures
-                  }}
-                  style={getFeatureStyle}
-                  onEachFeature={onEachFeature}
-                />
-                <MapUpdater features={visibleFeatures} />
-              </>
+              <GeoJSON
+                key={`features-${visibleFeatures.length}-${JSON.stringify(layerVisibility)}`}
+                data={{
+                  type: 'FeatureCollection',
+                  features: visibleFeatures
+                }}
+                style={getFeatureStyle}
+                onEachFeature={onEachFeature}
+              />
             )}
           </MapContainer>
           
           {!isLoading && features.length === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center text-muted-foreground">
-                <MapPin className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No parcel data to display</p>
-                <p className="text-xs mt-1">Query parcels to see them on the map</p>
-                <p className="text-xs mt-2 italic">Compatible with Google Earth Pro & Web</p>
+            <div className="absolute top-4 left-4 bg-black/60 text-white p-3 rounded-lg text-sm backdrop-blur-sm z-10 max-w-xs">
+              <div className="flex items-center gap-2 mb-1">
+                <MapPin className="w-4 h-4" />
+                <span className="font-medium">Australia Satellite View</span>
               </div>
+              <p className="text-xs opacity-90">Search parcels to overlay on this satellite map</p>
             </div>
           )}
         </div>
