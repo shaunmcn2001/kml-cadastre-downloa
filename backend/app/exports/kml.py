@@ -146,20 +146,18 @@ def _add_features_to_container(container, features: List[Feature], style):
             props = feature.properties
             geometry = feature.geometry
 
-            # --- Sidebar name: lotplan only (fallbacks) ---
-            lotplan = None
+            # --- force sidebar name to lotplan (fallback to id) and remove snippet ---
+            desired_name = None
             for key in ("lotplan", "lot_plan", "lot_plan_id"):
                 if hasattr(props, key) and getattr(props, key):
-                    lotplan = str(getattr(props, key))
+                    desired_name = str(getattr(props, key))
                     break
-            if not lotplan:
-                lotplan = str(getattr(props, "name", None) or getattr(props, "id", "Parcel"))
+            if not desired_name:
+                desired_name = str(getattr(props, "id", "Parcel"))
 
-            # Create placemark with clean sidebar name
-            placemark = container.newpolygon(name=lotplan)
-
-            # Hide grey snippet in Google Earth Places panel
-            placemark.snippet.maxlines = 0
+            placemark = container.newpolygon()   # NOTE: no 'name=' here
+            placemark.name = desired_name        # override any upstream props.name
+            placemark.snippet.maxlines = 0       # hide grey line in Places panel
             placemark.snippet.content = ""
 
             # Popup: ID + Area only
