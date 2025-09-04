@@ -148,8 +148,8 @@ function App() {
       </header>
 
       <main className="grid">
-        {/* MAP: spans 6 on desktop */}
-        <section className="card map-card" style={{ gridColumn: "span 12" }}>
+        {/* MAP: spans 8 on desktop */}
+        <section className="card map-card">
           <div className="card-header">
             <span className="dot"/>
             <div>
@@ -162,13 +162,13 @@ function App() {
           </div>
         </section>
 
-        {/* SEARCH: spans 6 on desktop */}
-        <section className="card search-card" style={{ gridColumn: "span 12" }}>
+        {/* SEARCH: spans 4 on desktop */}
+        <section className="card search-card">
           <div className="card-header">
             <span className="dot"/>
             <div>
               <div className="card-title">Search</div>
-              <div className="card-sub">Paste Lot/Plan or use existing controls</div>
+              <div className="card-sub">Lot/Plan identifiers</div>
             </div>
           </div>
           <div className="card-body search-slot">
@@ -179,13 +179,13 @@ function App() {
           </div>
         </section>
 
-        {/* EXPORT: spans 6 on desktop */}
-        <section className="card export-card" style={{ gridColumn: "span 12" }}>
+        {/* EXPORT: spans 4 on desktop */}
+        <section className="card export-card">
           <div className="card-header">
             <span className="dot"/>
             <div>
               <div className="card-title">Export</div>
-              <div className="card-sub">KML/KMZ (others unchanged)</div>
+              <div className="card-sub">KML/KMZ formats</div>
             </div>
           </div>
           <div className="card-body export-slot">
@@ -196,13 +196,13 @@ function App() {
           </div>
         </section>
 
-        {/* Debug Panel: spans 6 on desktop */}
-        <section className="card debug-card" style={{ gridColumn: "span 12" }}>
+        {/* Debug Panel: spans 4 on desktop */}
+        <section className="card debug-card">
           <div className="card-header">
             <span className="dot"/>
             <div>
               <div className="card-title">Debug</div>
-              <div className="card-sub">Connection & performance details</div>
+              <div className="card-sub">Connection details</div>
             </div>
           </div>
           <div className="card-body debug-slot">

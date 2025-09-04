@@ -1,60 +1,74 @@
-:root {
-  --card: #0f141
-  --accent: #6ee7ff;
-  --ring: #34d399;
-  --accent: #6ee7ff;
-  --muted: #8aa0b5;
-  --ring: #34d399;
-}
+/* Glass morphism styles for cadastral app */
 
 html, body, #root {
-  background:
- 
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
 
 body {
   margin: 0;
-  background:
+  background: 
     radial-gradient(1200px 800px at 20% -10%, #16202b 0%, transparent 50%),
     radial-gradient(1200px 800px at 120% 10%, #0f1b28 0%, transparent 50%),
-  gap: 12px;
-  flex-shrink: 0;
-
- 
-
-
+    linear-gradient(135deg, #0a0f1a 0%, #151b2a 100%);
+  background-attachment: fixed;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 13px;
+  color: var(--foreground);
 }
-.grid {
- 
 
+.app-shell {
+  min-height: 100vh;
+  padding: 12px;
 }
-@media (min-widt
-    grid-template-colu
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 0 4px;
 }
-.card {
-  background: var(--ca
- 
 
 .app-title {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
-  letter-spacing: .3px;
+  letter-spacing: 0.3px;
+  color: var(--foreground);
 }
 
 .app-sub {
-  font-size: 13px;
-  color: var(--muted);
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin-top: 2px;
 }
 
 .grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 16px;
+  gap: 12px;
 }
 
 @media (min-width: 900px) {
   .grid {
     grid-template-columns: repeat(12, 1fr);
+  }
+  
+  .map-card {
+    grid-column: span 8;
+  }
+  
+  .search-card {
+    grid-column: span 4;
+  }
+  
+  .export-card {
+    grid-column: span 4;
+  }
+  
+  .debug-card {
+    grid-column: span 4;
   }
 }
 
@@ -63,88 +77,106 @@ body {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 16px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(255, 255, 255, .02);
+  box-shadow: 
+    0 10px 30px rgba(0, 0, 0, 0.35), 
+    inset 0 1px 0 rgba(255, 255, 255, 0.02);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   overflow: hidden;
+  transition: all 0.3s ease;
 }
 
 .card:hover {
-  box-shadow: 0 18px 50px rgba(0, 0, 0, .45), 0 0 0 1px rgba(110, 231, 255, .08) inset;
+  box-shadow: 
+    0 18px 50px rgba(0, 0, 0, 0.45), 
+    0 0 0 1px rgba(110, 231, 255, 0.08) inset;
+  transform: translateY(-2px);
 }
 
 .card-header {
-}
+  display: flex;
   align-items: center;
-  .grid {
-  padding: 14px 16px;
-  border-bottom: 1px solid #182330;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(24, 35, 48, 0.8);
 }
 
 .dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 18px var(--accent), 0 0 2px var(--accent);
+  box-shadow: 
+    0 0 12px var(--accent), 
+    0 0 2px var(--accent);
+  flex-shrink: 0;
 }
 
 .card-title {
   font-weight: 700;
-  letter-spacing: .2px;
+  letter-spacing: 0.2px;
+  color: var(--card-foreground);
+  margin: 0;
+  font-size: 14px;
 }
 
 .card-sub {
-  font-size: 12px;
-  color: var(--muted);
+  font-size: 11px;
+  color: var(--muted-foreground);
+  margin: 2px 0 0 0;
 }
 
 .card-body {
-  padding: 14px 16px;
+  padding: 12px 14px;
 }
 
-.map-slot, .search-slot, .export-slot {
-  min-height: 200px;
+.map-slot, .search-slot, .export-slot, .debug-slot {
+  min-height: 160px;
 }
 
 @media (min-width: 900px) {
   .map-slot {
-    min-height: 280px;
-
+    min-height: 240px;
+  }
   
-  .search-slot, .export-slot {
-    min-height: 220px;
+  .search-slot, .export-slot, .debug-slot {
+    min-height: 180px;
   }
 }
 
-.card :is(input, select, textarea, button) {
-  background: #0e151c;
+.card input, 
+.card select, 
+.card textarea, 
+.card button {
+  background: rgba(14, 21, 28, 0.8);
   color: #e7f1ff;
   border: 1px solid #1c2835;
   border-radius: 10px;
-
+  transition: all 0.2s ease;
 }
 
-.card :is(input, select, textarea):focus {
-
+.card input:focus, 
+.card select:focus, 
+.card textarea:focus {
+  outline: none;
   border-color: var(--ring);
-
+  box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.2);
 }
 
 .row {
-
+  display: flex;
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
-
+}
 
 .right {
   margin-left: auto;
+}
 
-
-
+.mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-
+}
 
 .badge {
   font-size: 11px;
@@ -152,15 +184,7 @@ body {
   background: linear-gradient(180deg, #7efcff, #5eead4);
   padding: 6px 10px;
   border-radius: 999px;
-
-
-
-
-
-
-
-
-
-
-
-
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
