@@ -1,101 +1,98 @@
 :root {
-  --card: #0f141a
-  --accent: #6ee7ff; 
+  --bg: #0b0f14;
+  --card: #0f141aee;
+  --border: #1f2b37;
+  --accent: #6ee7ff;
+  --muted: #8aa0b5;
   --ring: #34d399;
-  --accent: #6ee7ff; 
-  --muted: #8aa0b5; 
-  --ring: #34d399;
-b
+}
 
-    linear-gradient
-  font-family: 
+html, body, #root {
+  height: 100%;
+}
 
-
-  box-
-
-  display: fl
-  justify-content: space-between; 
-  margin-bottom: 20px;
-    linear-gradient(180deg, #0b0f14 0%, #0a0d12 100%);
-  color: #e7f1ff; 
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
+body {
+  margin: 0;
+  background: radial-gradient(1200px 800px at 20% -10%, #16202b 0%, transparent 50%), radial-gradient(1200px 800px at 120% 10%, #0f1b28 0%, transparent 50%), linear-gradient(180deg, #0b0f14 0%, #0a0d12 100%);
+  color: #e7f1ff;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Inter, Arial, sans-serif;
 }
 
 .app-shell {
-  min-height: 100%; 
-  padding: 24px; 
+  min-height: 100%;
+  padding: 24px;
   box-sizing: border-box;
 }
 
 .app-header {
-  display: flex; 
-  align-items: center; 
-  justify-content: space-between; 
-  gap: 16px; 
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   margin-bottom: 20px;
 }
 
 .app-title {
-  font-size: 20px; 
-  font-weight: 700; 
-.card {
- 
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
 
 .app-sub {
-  font-size: 13px; 
+  font-size: 13px;
   color: var(--muted);
 }
 
-  box-s
-  display: grid; 
-  grid-template-columns: 1fr; 
+.grid {
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 16px;
- 
-
-@media (min-width: 900px) { 
-  .grid {
-    grid-template-columns: repeat(12, 1fr);
-  } 
- 
-
-
-  position: relative; 
-  background: var(--card); 
-  border: 1px solid var(--border);
-.card-sub {
-  box-shadow: 0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.02);
-  backdrop-filter: blur(12px); 
-  -webkit-backdrop-filter: blur(12px); 
-  padding: 14px 16p
 }
 
-.card:hover { 
-  box-shadow: 0 18px 50px rgba(0,0,0,.45), 0 0 0 1px rgba(110,231,255,.08) inset; 
+@media (min-width: 900px) {
+  .grid {
+    grid-template-columns: repeat(12, 1fr);
+  }
+}
+
+.card {
+  position: relative;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  overflow: hidden;
+}
+
+.card:hover {
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(110, 231, 255, 0.08) inset;
 }
 
 .card-header {
-
-  align-items: center; 
-  color: #e7f
-  padding: 14px 16px; 
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
   border-bottom: 1px solid #182330;
 }
 
 .dot {
-  width: 10px; 
-  height: 10px; 
-  border-radius: 999px; 
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
   background: var(--accent);
   box-shadow: 0 0 18px var(--accent), 0 0 2px var(--accent);
 }
 
 .card-title {
-  font-weight: 700; 
-  letter-spacing: .2px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
 }
 
 .card-sub {
-  font-size: 12px; 
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -107,55 +104,57 @@ b
   min-height: 320px;
 }
 
-@media (min-width: 900px) { 
+@media (min-width: 900px) {
   .map-slot {
     min-height: 540px;
-
+  }
 }
 
 .card :is(input, select, textarea, button) {
-  background: #0e151c; 
-  color: #e7f1ff; 
-  border: 1px solid #1c2835; 
-  border-radius: 10px; 
+  background: #0e151c;
+  color: #e7f1ff;
+  border: 1px solid #1c2835;
+  border-radius: 10px;
   padding: 10px 12px;
 }
 
 .card :is(input, select, textarea):focus {
-
-  border-color: var(--ring); 
-  box-shadow: 0 0 0 3px rgba(52,211,153,.18);
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.18);
 }
 
 .row {
-
-  gap: 10px; 
-
+  display: flex;
+  gap: 10px;
+  align-items: center;
   flex-wrap: wrap;
+}
 
-
-
+.right {
   margin-left: auto;
-
+}
 
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
 
-
-
-  font-size: 11px; 
-  color: #0b1218; 
+.badge {
+  font-size: 11px;
+  color: #0b1218;
   background: linear-gradient(180deg, #7efcff, #5eead4);
-  padding: 6px 10px; 
-  border-radius: 999px; 
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid #7efcff33;
+}
 
-
-
-
-
-
-
-
-
-
-
+/* Responsive grid layout */
+@media (min-width: 900px) {
+  .map-card {
+    grid-column: span 8;
+  }
+  .search-card, .export-card {
+    grid-column: span 4;
+  }
+}
+}
