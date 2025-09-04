@@ -11,6 +11,7 @@ import { loadConfig } from './lib/config';
 import { apiClient } from './lib/api';
 import { toast } from 'sonner';
 import type { ParcelFeature, ParcelState } from './lib/types';
+import './styles/glass.css';
 
 function App() {
   const [features, setFeatures] = useState<ParcelFeature[]>([]);
@@ -112,11 +113,13 @@ function App() {
 
   if (isLoading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-          <h2 className="text-lg font-semibold text-foreground mb-2">KML Downloads for Google Earth</h2>
-          <p className="text-muted-foreground">Connecting to backend service...</p>
+      <div className="app-shell">
+        <div className="h-screen flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+            <h2 className="text-lg font-semibold mb-2">KML Downloads for Google Earth</h2>
+            <p className="text-sm" style={{ color: 'var(--muted)' }}>Connecting to backend service...</p>
+          </div>
         </div>
       </div>
     );
@@ -125,53 +128,88 @@ function App() {
   // Show connection troubleshooter if there's a backend error
   if (backendError) {
     return (
-      <>
+      <div className="app-shell">
         <ConnectionTroubleshooter onConnectionSuccess={() => setBackendError(null)} />
         <Toaster />
-      </>
+      </div>
     );
   }
 
   return (
-    <div className="h-screen flex flex-col bg-background">
-      <header className="border-b bg-card px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-foreground">KML Downloads</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">Optimized for Google Earth Web & Pro</p>
-          </div>
-          <div className="text-xs text-muted-foreground">
-            NSW • QLD • SA
-          </div>
+    <div className="app-shell">
+      <header className="app-header">
+        <div>
+          <div className="app-title">Cadastral Tools • All States</div>
+          <div className="app-sub">Map • Search • Export — additional modules coming (Land Types, Vegetation)</div>
+        </div>
+        <div className="row right">
+          <span className="badge mono">UI Preview</span>
         </div>
       </header>
-      <div className="flex-1 flex overflow-hidden">
-        {/* Map View - Left Side */}
-        <div className="flex-1 p-4">
-          <MapView features={features} isLoading={isQuerying} />
-        </div>
 
-        {/* Control Panel - Right Side */}
-        <div className="w-96 border-l bg-card flex flex-col max-h-full">
-          <div className="flex-1 overflow-y-auto scrollbar-thin">
-            <div className="p-4 space-y-6">
-              <ParcelInputPanel 
-                onQueryParcels={handleQueryParcels}
-                isQuerying={isQuerying}
-              />
-
-              <ExportPanel 
-                features={features}
-                isQuerying={isQuerying}
-              />
+      <main className="grid">
+        {/* MAP: spans 8 on desktop */}
+        <section className="card map-card" style={{ gridColumn: "span 12" }}>
+          <div className="card-header">
+            <span className="dot"/>
+            <div>
+              <div className="card-title">Map</div>
+              <div className="card-sub">Interactive view & selection</div>
             </div>
           </div>
+          <div className="card-body map-slot">
+            <MapView features={features} isLoading={isQuerying} />
+          </div>
+        </section>
 
-          <div className="border-t bg-card flex-shrink-0">
+        {/* SEARCH: spans 4 on desktop */}
+        <section className="card search-card" style={{ gridColumn: "span 12" }}>
+          <div className="card-header">
+            <span className="dot"/>
+            <div>
+              <div className="card-title">Search</div>
+              <div className="card-sub">Paste Lot/Plan or use existing controls</div>
+            </div>
+          </div>
+          <div className="card-body search-slot">
+            <ParcelInputPanel 
+              onQueryParcels={handleQueryParcels}
+              isQuerying={isQuerying}
+            />
+          </div>
+        </section>
+
+        {/* EXPORT: spans 4 on desktop */}
+        <section className="card export-card" style={{ gridColumn: "span 12" }}>
+          <div className="card-header">
+            <span className="dot"/>
+            <div>
+              <div className="card-title">Export</div>
+              <div className="card-sub">KML/KMZ (others unchanged)</div>
+            </div>
+          </div>
+          <div className="card-body export-slot">
+            <ExportPanel 
+              features={features}
+              isQuerying={isQuerying}
+            />
+          </div>
+        </section>
+
+        {/* Debug Panel - Hidden in glassmorphism layout but accessible */}
+        <section className="card" style={{ gridColumn: "span 12" }}>
+          <div className="card-header">
+            <span className="dot"/>
+            <div>
+              <div className="card-title">Debug</div>
+              <div className="card-sub">Connection & performance details</div>
+            </div>
+          </div>
+          <div className="card-body">
             <DebugPanel />
           </div>
-        </div>
-      </div>
+        </section>
+      </main>
       <Toaster />
     </div>
   );
