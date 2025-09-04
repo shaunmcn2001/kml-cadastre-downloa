@@ -58,6 +58,7 @@ class StyleOptions(BaseModel):
     fillOpacity: Optional[float] = 0.3
     strokeWidth: Optional[float] = 2.0
     colorByState: Optional[bool] = True
+    folderName: Optional[str] = None
 
 class ExportRequest(BaseModel):
     features: List[Feature]

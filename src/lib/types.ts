@@ -62,6 +62,7 @@ export interface ExportRequest {
     colorByState?: boolean;
     googleEarthOptimized?: boolean;
     version?: string;
+    folderName?: string;
   };
 }
 

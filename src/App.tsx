@@ -152,7 +152,7 @@ function App() {
         </div>
 
         {/* Control Panel - Right Side */}
-        <div className="w-96 border-l bg-card flex flex-col">
+        <div className="w-96 border-l bg-card flex flex-col max-h-full">
           <div className="flex-1 overflow-y-auto scrollbar-thin">
             <div className="p-4 space-y-6">
               <ParcelInputPanel 
@@ -167,7 +167,7 @@ function App() {
             </div>
           </div>
 
-          <div className="border-t bg-card">
+          <div className="border-t bg-card flex-shrink-0">
             <DebugPanel />
           </div>
         </div>

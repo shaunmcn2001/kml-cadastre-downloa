@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
-import { Download, Package, Image, AlertTriangle } from '@phosphor-icons/react';
+import { Input } from '@/components/ui/input';
+import { Download, Package, Image, AlertTriangle, Folder } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { apiClient } from '../lib/api';
 import type { ParcelFeature } from '../lib/types';
@@ -18,6 +19,7 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
   const [exportingKML, setExportingKML] = React.useState(false);
   const [exportingKMZ, setExportingKMZ] = React.useState(false);
   const [exportingGeoTIFF, setExportingGeoTIFF] = React.useState(false);
+  const [folderName, setFolderName] = React.useState('');
 
   const hasFeatures = features.length > 0;
   const totalArea = features.reduce((sum, f) => sum + (f.properties.area_ha || 0), 0);
@@ -107,7 +109,8 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
           strokeWidth: 2,
           colorByState: true,
           googleEarthOptimized: true, // Enable Google Earth Web/Pro compatibility
-          version: '2.3' // Use latest KML version
+          version: '2.3', // Use latest KML version
+          folderName: folderName.trim() || undefined
         }
       });
       
@@ -145,7 +148,8 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
           strokeWidth: 2,
           colorByState: true,
           googleEarthOptimized: true, // Enable Google Earth Web/Pro compatibility
-          version: '2.3' // Use latest KML version
+          version: '2.3', // Use latest KML version
+          folderName: folderName.trim() || undefined
         }
       });
       
@@ -248,6 +252,27 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
         )}
 
         <div className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="folder-name" className="text-sm font-medium flex items-center gap-2">
+              <Folder className="w-4 h-4" />
+              KML Folder Name (Optional)
+            </Label>
+            <Input
+              id="folder-name"
+              type="text"
+              placeholder="e.g., My Parcels"
+              value={folderName}
+              onChange={(e) => setFolderName(e.target.value)}
+              className="text-sm"
+              maxLength={100}
+            />
+            <p className="text-xs text-muted-foreground">
+              Leave empty for default folder name
+            </p>
+          </div>
+
+          <Separator />
+          
           {/* Test download button for troubleshooting */}
           {hasFeatures && (
             <Button

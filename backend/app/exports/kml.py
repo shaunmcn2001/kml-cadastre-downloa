@@ -24,11 +24,17 @@ def export_kml(features: List[Feature], style_options: StyleOptions = None) -> s
 
     # Create KML document
     kml = simplekml.Kml()
-    kml.document.name = "Cadastral Parcels"
-    kml.document.description = f"Exported {len(features)} cadastral parcels"
+    
+    # Use custom folder name if provided, otherwise use default
+    if style_options.folderName:
+        kml.document.name = style_options.folderName.strip()
+        kml.document.description = ""  # Remove folder description as requested
+    else:
+        kml.document.name = "Cadastral Parcels"
+        kml.document.description = ""  # Remove folder description as requested
 
-    # Group features by state if requested
-    if style_options.colorByState:
+    # Group features by state if requested and no custom folder name is provided
+    if style_options.colorByState and not style_options.folderName:
         features_by_state = {}
         for feature in features:
             state = feature.properties.state
@@ -37,7 +43,7 @@ def export_kml(features: List[Feature], style_options: StyleOptions = None) -> s
         # Create folder for each state
         for state, state_features in features_by_state.items():
             folder = kml.newfolder(name=f"{state} Parcels ({len(state_features)})")
-            folder.description = f"Cadastral parcels from {state}"
+            folder.description = ""  # Remove folder descriptions as requested
 
             # Create style for this state
             style = simplekml.Style()
@@ -61,6 +67,49 @@ def export_kml(features: List[Feature], style_options: StyleOptions = None) -> s
             style.linestyle.width = style_options.strokeWidth
 
             _add_features_to_container(folder, state_features, style)
+    elif style_options.folderName:
+        # Single custom folder for all features, styled by state but in one folder
+        folder = kml.newfolder(name=style_options.folderName.strip())
+        folder.description = ""  # Remove folder description as requested
+        
+        if style_options.colorByState:
+            # Group by state for styling but keep in single folder
+            features_by_state = {}
+            for feature in features:
+                state = feature.properties.state
+                features_by_state.setdefault(state, []).append(feature)
+            
+            for state, state_features in features_by_state.items():
+                # Create style for this state
+                style = simplekml.Style()
+                style.polystyle.color = STATE_COLORS.get(state, simplekml.Color.gray)
+                style.polystyle.fill = 1
+                style.polystyle.outline = 1
+                style.polystyle.altitudemode = simplekml.AltitudeMode.clamptoground
+
+                # Set opacity
+                alpha = int(style_options.fillOpacity * 255)
+                current_color = style.polystyle.color
+                if isinstance(current_color, str) and len(current_color) == 8:
+                    style.polystyle.color = f"{alpha:02x}{current_color[2:]}"
+                else:
+                    style.polystyle.color = f"{alpha:02x}0000ff"
+
+                style.linestyle.color = STATE_COLORS.get(state, simplekml.Color.gray)
+                style.linestyle.width = style_options.strokeWidth
+
+                _add_features_to_container(folder, state_features, style)
+        else:
+            # Single style for all features in custom folder
+            style = simplekml.Style()
+            style.polystyle.fill = 1
+            style.polystyle.outline = 1
+            alpha = int(style_options.fillOpacity * 255)
+            style.polystyle.color = f"{alpha:02x}0000ff"  # Blue with alpha (AABBGGRR)
+            style.linestyle.color = simplekml.Color.blue
+            style.linestyle.width = style_options.strokeWidth
+            
+            _add_features_to_container(folder, features, style)
     else:
         # Single style for all features
         style = simplekml.Style()
