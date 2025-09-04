@@ -112,7 +112,7 @@ export function MapView({ features, isLoading }: MapViewProps) {
   };
 
   return (
-    <div className="h-full w-full flex flex-col" style={{ minHeight: '400px' }}>
+    <div className="h-full w-full flex flex-col">
       {mapError && (
         <div className="p-4 bg-red-900/20 border border-red-700 text-red-300 text-sm rounded-lg mb-4">
           <strong>Map Error:</strong> {mapError}
@@ -120,11 +120,11 @@ export function MapView({ features, isLoading }: MapViewProps) {
       )}
       
       {features.length > 0 && (
-        <div className="p-4 border-b space-y-3 flex-shrink-0" style={{ backgroundColor: 'var(--surface)' }}>
-          <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Layer Visibility</div>
-          <div className="flex gap-4">
+        <div className="p-2 border-b space-y-2 flex-shrink-0" style={{ backgroundColor: 'var(--surface)' }}>
+          <div className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>Layer Visibility</div>
+          <div className="flex gap-3">
             {(['NSW', 'QLD', 'SA'] as ParcelState[]).map(state => (
-              <div key={state} className="flex items-center space-x-2">
+              <div key={state} className="flex items-center space-x-1">
                 <Switch
                   id={`layer-${state}`}
                   checked={layerVisibility[state]}
@@ -134,11 +134,11 @@ export function MapView({ features, isLoading }: MapViewProps) {
                 />
                 <label 
                   htmlFor={`layer-${state}`} 
-                  className="text-sm cursor-pointer flex items-center gap-2"
+                  className="text-xs cursor-pointer flex items-center gap-1"
                   style={{ color: 'var(--text-secondary)' }}
                 >
                   <div 
-                    className="w-3 h-3 rounded border" 
+                    className="w-2 h-2 rounded border" 
                     style={{ 
                       backgroundColor: stateColors[state],
                       opacity: layerVisibility[state] ? 0.3 : 0.1,
@@ -155,7 +155,7 @@ export function MapView({ features, isLoading }: MapViewProps) {
               </div>
             ))}
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-1">
             {Object.entries(stateStats).map(([state, count]) => (
               <span key={state} className="badge text-xs">
                 {state}: {count}
@@ -165,7 +165,7 @@ export function MapView({ features, isLoading }: MapViewProps) {
         </div>
       )}
       
-      <div className="flex-1 relative" style={{ minHeight: '400px' }}>
+      <div className="flex-1 relative">
         {isLoading && (
           <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-10">
             <div className="text-center">
@@ -176,7 +176,7 @@ export function MapView({ features, isLoading }: MapViewProps) {
         )}
         
         {/* Debug info */}
-        <div className="absolute top-4 right-4 bg-black/60 text-white p-2 rounded text-xs z-10">
+        <div className="absolute top-2 right-2 bg-black/60 text-white p-1 rounded text-xs z-10">
           Map: {mapInitialized ? 'Ready' : 'Loading'} | Features: {features.length}
         </div>
         
@@ -184,7 +184,7 @@ export function MapView({ features, isLoading }: MapViewProps) {
           ref={mapRef}
           center={[-25.2744, 133.7751]} // Center of Australia
           zoom={5}
-          style={{ height: '100%', width: '100%', minHeight: '400px' }}
+          style={{ height: '100%', width: '100%' }}
           className="z-0"
           whenCreated={handleMapReady}
           onError={(e) => {
@@ -220,9 +220,9 @@ export function MapView({ features, isLoading }: MapViewProps) {
         </MapContainer>
         
         {!isLoading && features.length === 0 && (
-          <div className="absolute top-4 left-4 bg-black/60 text-white p-3 rounded-lg text-sm backdrop-blur-sm z-10 max-w-xs">
-            <div className="flex items-center gap-2 mb-1">
-              <MapPin className="w-4 h-4" />
+          <div className="absolute top-2 left-2 bg-black/60 text-white p-2 rounded-lg text-xs backdrop-blur-sm z-10 max-w-xs">
+            <div className="flex items-center gap-1 mb-1">
+              <MapPin className="w-3 h-3" />
               <span className="font-medium">Australia Satellite View</span>
             </div>
             <p className="text-xs opacity-90">Search parcels to overlay on this satellite map</p>

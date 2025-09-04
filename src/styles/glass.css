@@ -205,11 +205,17 @@ body {
 }
 
 .card-body {
-  padding: 20px;
+  padding: 16px;
   height: calc(100% - 80px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+/* Map-specific styling for maximum space utilization */
+.map-card .card-body {
+  padding: 0 !important;
+  height: calc(100% - 60px);
 }
 
 .map-slot {
@@ -217,21 +223,25 @@ body {
   border-radius: 16px;
   overflow: hidden;
   background: var(--surface);
-  min-height: 400px;
+  min-height: 500px;
   flex: 1;
   position: relative;
+  padding: 0;
+  margin: 0;
 }
 
 .map-slot > * {
   height: 100% !important;
-  min-height: 400px !important;
+  min-height: 500px !important;
+  border-radius: 16px;
 }
 
-/* Ensure leaflet map container gets proper dimensions */
+/* Ensure leaflet map container gets proper dimensions and fills the card */
 .leaflet-container {
   height: 100% !important;
   width: 100% !important;
-  min-height: 400px !important;
+  min-height: 500px !important;
+  border-radius: 16px !important;
 }
 
 .search-slot,
@@ -403,8 +413,13 @@ body {
   }
   
   .card {
-    height: 350px;
-    max-height: 350px;
+    height: 450px;
+    max-height: 450px;
+  }
+  
+  .map-card .card-body {
+    padding: 0 !important;
+    height: calc(100% - 60px);
   }
   
   .card-body {
@@ -414,8 +429,20 @@ body {
   .search-slot,
   .export-slot,
   .debug-slot {
-    min-height: 250px;
-    max-height: 250px;
+    min-height: 350px;
+    max-height: 350px;
+  }
+  
+  .map-slot {
+    min-height: 350px !important;
+  }
+  
+  .map-slot > * {
+    min-height: 350px !important;
+  }
+  
+  .leaflet-container {
+    min-height: 350px !important;
   }
   
   .right {
@@ -442,7 +469,8 @@ body {
   overflow: hidden !important;
   height: 100% !important;
   width: 100% !important;
-  min-height: 400px !important;
+  min-height: 500px !important;
+  position: relative;
 }
 
 /* Override Leaflet's default styles */
