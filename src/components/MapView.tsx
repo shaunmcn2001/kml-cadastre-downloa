@@ -49,355 +49,150 @@ export function MapView({ features, isLoading }: MapViewProps) {
     QLD: true,
     SA: true
   });
-  
-  const mapRef = useRef<L.Map>(null);
-  
-  const getFeatureStyle = (feature: ParcelFeature) => {
-    const state = feature.properties.state;
-    const color = stateColors[state];
-    const isVisible = layerVisibility[state];
-    
-    return {
-      fillColor: color,
-      fillOpacity: isVisible ? 0.3 : 0,
-      color: color,
-      weight: 2,
-      opacity: isVisible ? 0.8 : 0
-    };
-  };
-  
-  const onEachFeature = (feature: ParcelFeature, layer: L.Layer) => {
+
+  const filteredFeatures = features.filter(feature => 
+    layerVisibility[feature.properties.state]
+  );
+
+  const onEachFeature = (feature: any, layer: any) => {
     if (feature.properties) {
+      const color = stateColors[feature.properties.state];
+      
+      layer.setStyle({
+        fillColor: color,
+        fillOpacity: 0.3,
+        color: color,
+        weight: 2,
+        opacity: 0.8
+      });
+
+      // Create popup content
       const props = feature.properties;
       const popupContent = `
-        <div style="font-family: Inter, sans-serif;">
-          <h3 style="margin: 0 0 8px 0; color: #1f2937; font-size: 14px; font-weight: 600;">
-            ${props.name || props.id}
-          </h3>
-          <div style="font-size: 12px; color: #6b7280; line-height: 1.4;">
-            <div><strong>State:</strong> ${props.state}</div>
-            <div><strong>ID:</strong> ${props.id}</div>
-            ${props.area_ha ? `<div><strong>Area:</strong> ${props.area_ha.toFixed(2)} ha</div>` : ''}
-            ${Object.entries(props)
-              .filter(([key]) => !['id', 'state', 'name', 'area_ha'].includes(key))
-              .slice(0, 3)
-              .map(([key, value]) => `<div><strong>${key}:</strong> ${value}</div>`)
-              .join('')
-            }
+        <div class="font-mono text-xs">
+          <div class="font-semibold mb-1">${props.name || props.id}</div>
+          <div class="space-y-0.5">
+            <div><span class="font-medium">State:</span> ${props.state}</div>
+            ${props.lotplan ? `<div><span class="font-medium">Lot/Plan:</span> ${props.lotplan}</div>` : ''}
+            ${props.area_ha ? `<div><span class="font-medium">Area:</span> ${Number(props.area_ha).toFixed(2)} ha</div>` : ''}
+            ${props.title_ref ? `<div><span class="font-medium">Title:</span> ${props.title_ref}</div>` : ''}
+            ${props.address ? `<div><span class="font-medium">Address:</span> ${props.address}</div>` : ''}
           </div>
         </div>
       `;
-      layer.bindPopup(popupContent);
+      
+      layer.bindPopup(popupContent, {
+        maxWidth: 300,
+        className: 'custom-popup'
+      });
+
+      // Hover effects
+      layer.on({
+        mouseover: function(e: any) {
+          const layer = e.target;
+          layer.setStyle({
+            fillOpacity: 0.5,
+            weight: 3
+          });
+        },
+        mouseout: function(e: any) {
+          const layer = e.target;
+          layer.setStyle({
+            fillOpacity: 0.3,
+            weight: 2
+          });
+        }
+      });
     }
   };
-  
-  const visibleFeatures = features.filter(feature => 
-    layerVisibility[feature.properties.state]
-  );
-  
-  const stateStats = features.reduce((acc, feature) => {
-    const state = feature.properties.state;
-    acc[state] = (acc[state] || 0) + 1;
-    return acc;
-  }, {} as Record<ParcelState, number>);
+
+  const toggleLayer = (state: ParcelState) => {
+    setLayerVisibility(prev => ({
+      ...prev,
+      [state]: !prev[state]
+    }));
+  };
+
+  const getStateCounts = () => {
+    const counts: Record<ParcelState, number> = { NSW: 0, QLD: 0, SA: 0 };
+    features.forEach(feature => {
+      counts[feature.properties.state]++;
+    });
+    return counts;
+  };
+
+  const stateCounts = getStateCounts();
 
   return (
-    <Card className="h-full">
+    <Card className="h-full flex flex-col">
       <CardHeader className="pb-3">
-        <CardTitle className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <MapPin className="w-5 h-5 text-primary" />
-            Map Preview
-          </div>
-          <div className="flex gap-2">
-            {Object.entries(stateStats).map(([state, count]) => (
-              <Badge key={state} variant="secondary" className="text-xs">
-                {state}: {count}
-              </Badge>
-            ))}
-          </div>
+        <CardTitle className="text-base flex items-center gap-2">
+          <MapPin className="w-4 h-4" />
+          Interactive Map
+          {isLoading && <div className="w-4 h-4 animate-spin border-2 border-primary border-t-transparent rounded-full" />}
         </CardTitle>
-      </CardHeader>
-      <CardContent className="p-0 flex-1 flex flex-col">
-        {features.length > 0 && (
-          <div className="p-4 border-b space-y-3">
-            <Label className="text-sm font-medium">Layer Visibility</Label>
-            <div className="flex gap-4">
-              {(['NSW', 'QLD', 'SA'] as ParcelState[]).map(state => (
-                <div key={state} className="flex items-center space-x-2">
-                  <Switch
-                    id={`layer-${state}`}
-                    checked={layerVisibility[state]}
-                    onCheckedChange={(checked) => 
-                      setLayerVisibility(prev => ({ ...prev, [state]: checked }))
-                    }
-                  />
-                  <Label 
-                    htmlFor={`layer-${state}`} 
-                    className="text-sm cursor-pointer flex items-center gap-2"
-                  >
-                    <div 
-                      className="w-3 h-3 rounded border" 
-                      style={{ 
-                        backgroundColor: stateColors[state],
-                        opacity: layerVisibility[state] ? 0.3 : 0.1,
-                        borderColor: stateColors[state]
-                      }}
-                    />
-                    {state}
-                    {stateStats[state] && (
-                      <span className="text-xs text-muted-foreground">
-                        ({stateStats[state]})
-                      </span>
-                    )}
-                  </Label>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
         
-        <div className="flex-1 relative">
-          {isLoading && (
-            <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-10">
-              <div className="text-center">
-                <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
-                <p className="text-sm text-muted-foreground">Loading parcel data...</p>
-              </div>
-            </div>
-          )}
-          
-          <MapContainer
-            center={[-27.4698, 153.0251]} // Brisbane
-            zoom={10}
-            style={{ height: '100%', width: '100%' }}
-            className="z-0"
-          >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            
-            {visibleFeatures.length > 0 && (
-              <>
-                <GeoJSON
-                  key={`features-${visibleFeatures.length}-${JSON.stringify(layerVisibility)}`}
-                  data={{
-                    type: 'FeatureCollection',
-                    features: visibleFeatures
+        {/* Layer Controls */}
+        <div className="flex flex-wrap gap-3 mt-2">
+          {(['NSW', 'QLD', 'SA'] as ParcelState[]).map(state => (
+            <div key={state} className="flex items-center space-x-2">
+              <Switch
+                id={`layer-${state}`}
+                checked={layerVisibility[state]}
+                onCheckedChange={() => toggleLayer(state)}
+                className="scale-75"
+              />
+              <Label 
+                htmlFor={`layer-${state}`}
+                className="text-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <div 
+                  className="w-3 h-3 rounded-sm border"
+                  style={{
+                    backgroundColor: stateColors[state],
+                    opacity: layerVisibility[state] ? 0.3 : 0.1,
+                    borderColor: stateColors[state]
                   }}
-                  style={getFeatureStyle}
-                  onEachFeature={onEachFeature}
                 />
-                <MapUpdater features={visibleFeatures} />
-              </>
-            )}
-          </MapContainer>
-          
-          {!isLoading && features.length === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center text-muted-foreground">
-                <MapPin className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No parcel data to display</p>
-                <p className="text-xs mt-1">Query parcels to see them on the map</p>
-                <p className="text-xs mt-2 italic">Compatible with Google Earth Pro & Web</p>
-              </div>
+                {state}
+                {stateCounts[state] > 0 && (
+                  <Badge variant="secondary" className="text-xs px-1.5 py-0">
+                    {stateCounts[state]}
+                  </Badge>
+                )}
+              </Label>
             </div>
-          )}
+          ))}
         </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// Fix for default markers
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
-
-interface MapViewProps {
-  features: ParcelFeature[];
-  isLoading: boolean;
-}
-
-const stateColors = {
-  NSW: '#1f2937', // Dark blue-gray
-  QLD: '#7c2d12', // Dark red
-  SA: '#14532d'   // Dark green
-};
-
-function MapUpdater({ features }: { features: ParcelFeature[] }) {
-  const map = useMap();
-  
-  useEffect(() => {
-    if (features.length > 0) {
-      const group = new L.FeatureGroup(
-        features.map(feature => L.geoJSON(feature))
-      );
-      map.fitBounds(group.getBounds(), { padding: [20, 20] });
-    }
-  }, [features, map]);
-  
-  return null;
-}
-
-export function MapView({ features, isLoading }: MapViewProps) {
-  const [layerVisibility, setLayerVisibility] = useState<Record<ParcelState, boolean>>({
-    NSW: true,
-    QLD: true,
-    SA: true
-  });
-  
-  const mapRef = useRef<L.Map>(null);
-  
-  const getFeatureStyle = (feature: ParcelFeature) => {
-    const state = feature.properties.state;
-    const color = stateColors[state];
-    const isVisible = layerVisibility[state];
-    
-    return {
-      fillColor: color,
-      fillOpacity: isVisible ? 0.3 : 0,
-      color: color,
-      weight: 2,
-      opacity: isVisible ? 0.8 : 0
-    };
-  };
-  
-  const onEachFeature = (feature: ParcelFeature, layer: L.Layer) => {
-    if (feature.properties) {
-      const props = feature.properties;
-      const popupContent = `
-        <div style="font-family: Inter, sans-serif;">
-          <h3 style="margin: 0 0 8px 0; color: #1f2937; font-size: 14px; font-weight: 600;">
-            ${props.name || props.id}
-          </h3>
-          <div style="font-size: 12px; color: #6b7280; line-height: 1.4;">
-            <div><strong>State:</strong> ${props.state}</div>
-            <div><strong>ID:</strong> ${props.id}</div>
-            ${props.area_ha ? `<div><strong>Area:</strong> ${props.area_ha.toFixed(2)} ha</div>` : ''}
-            ${Object.entries(props)
-              .filter(([key]) => !['id', 'state', 'name', 'area_ha'].includes(key))
-              .slice(0, 3)
-              .map(([key, value]) => `<div><strong>${key}:</strong> ${value}</div>`)
-              .join('')
-            }
-          </div>
-        </div>
-      `;
-      layer.bindPopup(popupContent);
-    }
-  };
-  
-  const visibleFeatures = features.filter(feature => 
-    layerVisibility[feature.properties.state]
-  );
-  
-  const stateStats = features.reduce((acc, feature) => {
-    const state = feature.properties.state;
-    acc[state] = (acc[state] || 0) + 1;
-    return acc;
-  }, {} as Record<ParcelState, number>);
-
-  return (
-    <Card className="h-full">
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <MapPin className="w-5 h-5 text-primary" />
-            Map Preview
-          </div>
-          <div className="flex gap-2">
-            {Object.entries(stateStats).map(([state, count]) => (
-              <Badge key={state} variant="secondary" className="text-xs">
-                {state}: {count}
-              </Badge>
-            ))}
-          </div>
-        </CardTitle>
       </CardHeader>
-      <CardContent className="p-0 flex-1 flex flex-col">
-        {features.length > 0 && (
-          <div className="p-4 border-b space-y-3">
-            <Label className="text-sm font-medium">Layer Visibility</Label>
-            <div className="flex gap-4">
-              {(['NSW', 'QLD', 'SA'] as ParcelState[]).map(state => (
-                <div key={state} className="flex items-center space-x-2">
-                  <Switch
-                    id={`layer-${state}`}
-                    checked={layerVisibility[state]}
-                    onCheckedChange={(checked) => 
-                      setLayerVisibility(prev => ({ ...prev, [state]: checked }))
-                    }
-                  />
-                  <Label 
-                    htmlFor={`layer-${state}`} 
-                    className="text-sm cursor-pointer flex items-center gap-2"
-                  >
-                    <div 
-                      className="w-3 h-3 rounded border" 
-                      style={{ 
-                        backgroundColor: stateColors[state],
-                        opacity: layerVisibility[state] ? 0.3 : 0.1,
-                        borderColor: stateColors[state]
-                      }}
-                    />
-                    {state}
-                    {stateStats[state] && (
-                      <span className="text-xs text-muted-foreground">
-                        ({stateStats[state]})
-                      </span>
-                    )}
-                  </Label>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        
-        <div className="flex-1 relative">
-          {isLoading && (
-            <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-10">
-              <div className="text-center">
-                <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
-                <p className="text-sm text-muted-foreground">Loading parcel data...</p>
-              </div>
-            </div>
-          )}
-          
-          <MapContainer
-            ref={mapRef}
-            center={[-27.4698, 153.0251]} // Brisbane
-            zoom={10}
-            style={{ height: '100%', width: '100%' }}
-            className="z-0"
-          >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            
-            {visibleFeatures.length > 0 && (
-              <>
-                <GeoJSON
-                  key={`features-${visibleFeatures.length}-${JSON.stringify(layerVisibility)}`}
-                  data={{
-                    type: 'FeatureCollection',
-                    features: visibleFeatures
-                  }}
-                  style={getFeatureStyle}
-                  onEachFeature={onEachFeature}
-                />
-                <MapUpdater features={visibleFeatures} />
-              </>
-            )}
-          </MapContainer>
-          
-          {!isLoading && features.length === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center">
+
+      <CardContent className="flex-1 p-0 relative">
+        <div className="absolute inset-0">
+          {filteredFeatures.length > 0 ? (
+            <MapContainer
+              center={[-27.4705, 133.0000]}
+              zoom={6}
+              className="h-full w-full rounded-b-lg"
+              zoomControl={true}
+              style={{ background: 'transparent' }}
+            >
+              <TileLayer
+                attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                className="map-tiles"
+              />
+              <GeoJSON 
+                key={`${filteredFeatures.length}-${Object.values(layerVisibility).join()}`}
+                data={{
+                  type: 'FeatureCollection',
+                  features: filteredFeatures
+                }}
+                onEachFeature={onEachFeature}
+              />
+              <MapUpdater features={filteredFeatures} />
+            </MapContainer>
+          ) : (
+            <div className="flex items-center justify-center h-full bg-muted/20 rounded-b-lg">
               <div className="text-center text-muted-foreground">
                 <MapPin className="w-12 h-12 mx-auto mb-2 opacity-50" />
                 <p className="text-sm">No parcel data to display</p>
