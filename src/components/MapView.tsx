@@ -3,10 +3,7 @@ import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { ParcelFeature, ParcelState } from '../lib/types';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { MapPin } from '@phosphor-icons/react';
 
 // Fix for default markers
@@ -37,6 +34,9 @@ function MapUpdater({ features }: { features: ParcelFeature[] }) {
         features.map(feature => L.geoJSON(feature))
       );
       map.fitBounds(group.getBounds(), { padding: [20, 20] });
+    } else {
+      // Always show Australia when no features
+      map.setView([-25.2744, 133.7751], 5);
     }
   }, [features, map]);
   
@@ -51,6 +51,10 @@ export function MapView({ features, isLoading }: MapViewProps) {
   });
   
   const mapRef = useRef<L.Map>(null);
+  const [mapError, setMapError] = useState<string | null>(null);
+  const [mapInitialized, setMapInitialized] = useState(false);
+  
+  console.log('MapView render:', { features: features.length, isLoading, mapError, mapInitialized });
   
   const getFeatureStyle = (feature: ParcelFeature) => {
     const state = feature.properties.state;
@@ -101,112 +105,130 @@ export function MapView({ features, isLoading }: MapViewProps) {
     return acc;
   }, {} as Record<ParcelState, number>);
 
+  const handleMapReady = () => {
+    console.log('Map initialized successfully');
+    setMapInitialized(true);
+    setMapError(null);
+  };
+
   return (
-    <Card className="h-full">
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <MapPin className="w-5 h-5 text-primary" />
-            Map Preview
-          </div>
-          <div className="flex gap-2">
-            {Object.entries(stateStats).map(([state, count]) => (
-              <Badge key={state} variant="secondary" className="text-xs">
-                {state}: {count}
-              </Badge>
+    <div className="h-full w-full flex flex-col">
+      {mapError && (
+        <div className="p-4 bg-red-900/20 border border-red-700 text-red-300 text-sm rounded-lg mb-4">
+          <strong>Map Error:</strong> {mapError}
+        </div>
+      )}
+      
+      {features.length > 0 && (
+        <div className="p-2 border-b space-y-2 flex-shrink-0" style={{ backgroundColor: 'var(--surface)' }}>
+          <div className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>Layer Visibility</div>
+          <div className="flex gap-3">
+            {(['NSW', 'QLD', 'SA'] as ParcelState[]).map(state => (
+              <div key={state} className="flex items-center space-x-1">
+                <Switch
+                  id={`layer-${state}`}
+                  checked={layerVisibility[state]}
+                  onCheckedChange={(checked) => 
+                    setLayerVisibility(prev => ({ ...prev, [state]: checked }))
+                  }
+                />
+                <label 
+                  htmlFor={`layer-${state}`} 
+                  className="text-xs cursor-pointer flex items-center gap-1"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  <div 
+                    className="w-2 h-2 rounded border" 
+                    style={{ 
+                      backgroundColor: stateColors[state],
+                      opacity: layerVisibility[state] ? 0.3 : 0.1,
+                      borderColor: stateColors[state]
+                    }}
+                  />
+                  {state}
+                  {stateStats[state] && (
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                      ({stateStats[state]})
+                    </span>
+                  )}
+                </label>
+              </div>
             ))}
           </div>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-0 flex-1 flex flex-col">
-        {features.length > 0 && (
-          <div className="p-4 border-b space-y-3">
-            <Label className="text-sm font-medium">Layer Visibility</Label>
-            <div className="flex gap-4">
-              {(['NSW', 'QLD', 'SA'] as ParcelState[]).map(state => (
-                <div key={state} className="flex items-center space-x-2">
-                  <Switch
-                    id={`layer-${state}`}
-                    checked={layerVisibility[state]}
-                    onCheckedChange={(checked) => 
-                      setLayerVisibility(prev => ({ ...prev, [state]: checked }))
-                    }
-                  />
-                  <Label 
-                    htmlFor={`layer-${state}`} 
-                    className="text-sm cursor-pointer flex items-center gap-2"
-                  >
-                    <div 
-                      className="w-3 h-3 rounded border" 
-                      style={{ 
-                        backgroundColor: stateColors[state],
-                        opacity: layerVisibility[state] ? 0.3 : 0.1,
-                        borderColor: stateColors[state]
-                      }}
-                    />
-                    {state}
-                    {stateStats[state] && (
-                      <span className="text-xs text-muted-foreground">
-                        ({stateStats[state]})
-                      </span>
-                    )}
-                  </Label>
-                </div>
-              ))}
+          <div className="flex gap-1">
+            {Object.entries(stateStats).map(([state, count]) => (
+              <span key={state} className="badge text-xs">
+                {state}: {count}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      
+      <div className="flex-1 relative">
+        {isLoading && (
+          <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-10">
+            <div className="text-center">
+              <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
+              <p className="text-sm text-muted-foreground">Loading parcel data...</p>
             </div>
           </div>
         )}
         
-        <div className="flex-1 relative">
-          {isLoading && (
-            <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-10">
-              <div className="text-center">
-                <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
-                <p className="text-sm text-muted-foreground">Loading parcel data...</p>
-              </div>
-            </div>
-          )}
-          
-          <MapContainer
-            ref={mapRef}
-            center={[-27.4698, 153.0251]} // Brisbane
-            zoom={10}
-            style={{ height: '100%', width: '100%' }}
-            className="z-0"
-          >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            
-            {visibleFeatures.length > 0 && (
-              <>
-                <GeoJSON
-                  key={`features-${visibleFeatures.length}-${JSON.stringify(layerVisibility)}`}
-                  data={{
-                    type: 'FeatureCollection',
-                    features: visibleFeatures
-                  }}
-                  style={getFeatureStyle}
-                  onEachFeature={onEachFeature}
-                />
-                <MapUpdater features={visibleFeatures} />
-              </>
-            )}
-          </MapContainer>
-          
-          {!isLoading && features.length === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center text-muted-foreground">
-                <MapPin className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No parcel data to display</p>
-                <p className="text-xs mt-1">Query parcels to see them on the map</p>
-                <p className="text-xs mt-2 italic">Compatible with Google Earth Pro & Web</p>
-              </div>
-            </div>
-          )}
+        {/* Debug info */}
+        <div className="absolute top-2 right-2 bg-black/60 text-white p-1 rounded text-xs z-10">
+          Map: {mapInitialized ? 'Ready' : 'Loading'} | Features: {features.length}
         </div>
-      </CardContent>
-    </Card>
+        
+        <MapContainer
+          ref={mapRef}
+          center={[-25.2744, 133.7751]} // Center of Australia
+          zoom={5}
+          style={{ height: '100%', width: '100%' }}
+          className="z-0"
+          whenCreated={handleMapReady}
+          onError={(e) => {
+            console.error('Map error:', e);
+            setMapError(e?.message || 'Failed to initialize map');
+          }}
+        >
+          {/* Google Satellite imagery via public tile server */}
+          <TileLayer
+            attribution='Imagery &copy; Google, Map data &copy; OpenStreetMap contributors'
+            url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
+            maxZoom={20}
+            onError={(e) => {
+              console.error('TileLayer error:', e);
+              setMapError('Failed to load map tiles');
+            }}
+          />
+          
+          {/* Always include MapUpdater to handle centering */}
+          <MapUpdater features={visibleFeatures} />
+          
+          {visibleFeatures.length > 0 && (
+            <GeoJSON
+              key={`features-${visibleFeatures.length}-${JSON.stringify(layerVisibility)}`}
+              data={{
+                type: 'FeatureCollection',
+                features: visibleFeatures
+              }}
+              style={getFeatureStyle}
+              onEachFeature={onEachFeature}
+            />
+          )}
+        </MapContainer>
+        
+        {!isLoading && features.length === 0 && (
+          <div className="absolute top-2 left-2 bg-black/60 text-white p-2 rounded-lg text-xs backdrop-blur-sm z-10 max-w-xs">
+            <div className="flex items-center gap-1 mb-1">
+              <MapPin className="w-3 h-3" />
+              <span className="font-medium">Australia Satellite View</span>
+            </div>
+            <p className="text-xs opacity-90">Search parcels to overlay on this satellite map</p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
