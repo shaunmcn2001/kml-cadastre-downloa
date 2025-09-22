@@ -1,5 +1,5 @@
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 
 class ParcelState(str, Enum):
@@ -38,6 +38,31 @@ class QueryRequest(BaseModel):
     ids: List[str]
     aoi: Optional[List[float]] = None  # bbox [minx, miny, maxx, maxy]
     options: Optional[QueryOptions] = None
+
+
+class SearchRequest(BaseModel):
+    state: ParcelState
+    term: str = Field(..., min_length=2, max_length=100)
+    page: int = Field(1, ge=1)
+    pageSize: int = Field(10, ge=1, le=50)
+
+    @field_validator("term")
+    @classmethod
+    def normalize_term(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 2:
+            raise ValueError("term must contain at least two characters")
+        return normalized
+
+
+class SearchResult(BaseModel):
+    id: str
+    state: ParcelState
+    label: str
+    address: Optional[str] = None
+    lot: Optional[str] = None
+    plan: Optional[str] = None
+    locality: Optional[str] = None
 
 class FeatureProperties(BaseModel):
     id: str

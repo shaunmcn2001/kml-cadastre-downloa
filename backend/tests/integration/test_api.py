@@ -1,3 +1,4 @@
+import os
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app
@@ -80,15 +81,32 @@ class TestAPIEndpoints:
             "features": [],
             "styleOptions": {}
         }
-        
+
         # Test KML
         response = client.post("/api/kml", json=payload)
         assert response.status_code == 400
-        
+
         # Test KMZ
         response = client.post("/api/kmz", json=payload)
         assert response.status_code == 400
-        
+
         # Test GeoTIFF
         response = client.post("/api/geotiff", json=payload)
         assert response.status_code == 400
+
+    @pytest.mark.skipif(not os.getenv("RUN_NETWORK_TESTS"), reason="Network tests disabled")
+    def test_search_endpoint_live(self):
+        """Exercise the live NSW search endpoint when network tests are enabled."""
+        payload = {
+            "state": "NSW",
+            "term": "Sydney",
+            "pageSize": 5
+        }
+
+        response = client.post("/api/search", json=payload, timeout=30)
+        assert response.status_code == 200
+
+        data = response.json()
+        assert isinstance(data, list)
+        if data:
+            assert data[0]["state"] == "NSW"
