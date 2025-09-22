@@ -22,23 +22,38 @@ ARCGIS_SERVICES = {
 STATE_FIELD_MAPPINGS = {
     ParcelState.NSW: {
         'id_field': 'cadid',
-        'name_field': 'primaryaddress',
+        'name_field': 'lotidstring',
         'lot_field': 'lotnumber',
-        'plan_field': 'plannumber'
+        'plan_field': 'planlabel',
+        'search_fields': ['lotidstring', 'lotnumber', 'planlabel'],
+        'order_field': 'lotidstring',
+        'extra_fields': ['locality']
     },
     ParcelState.QLD: {
         'id_field': 'lotplan',
         'name_field': 'addr_legal',
         'lot_field': 'lot',
-        'plan_field': 'plan'
+        'plan_field': 'plan',
+        'search_fields': ['addr_legal', 'lot', 'plan'],
+        'extra_fields': ['locality']
     },
     ParcelState.SA: {
         'id_field': 'parcel_id',
         'name_field': 'legal_desc',
         'lot_field': 'lot_number',
-        'plan_field': 'plan_number'
+        'plan_field': 'plan_number',
+        'search_fields': ['legal_desc', 'lot_number', 'plan_number'],
+        'extra_fields': ['locality']
     }
 }
+
+
+class ArcGISError(Exception):
+    """Raised when ArcGIS returns an application level error response."""
+
+    def __init__(self, message: str, code: Optional[int] = None):
+        super().__init__(message)
+        self.code = code
 
 class ArcGISClient:
     def __init__(self, timeout: int = 20, max_ids_per_chunk: int = 50):
@@ -55,7 +70,8 @@ class ArcGISClient:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=10),
-        before_sleep=before_sleep_log(logger, logging.WARNING)
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+        reraise=True
     )
     async def search_parcels(
         self,
@@ -84,22 +100,29 @@ class ArcGISClient:
         like_value = sanitized_term.replace(" ", "%")
         pattern = f"%{like_value}%"
 
+        search_fields = field_mapping.get('search_fields') or [
+            field_mapping['name_field'],
+            field_mapping['lot_field'],
+            field_mapping['plan_field']
+        ]
+        # Preserve ordering while ensuring we only query distinct fields
+        unique_search_fields = list(dict.fromkeys(search_fields))
         where_clauses = [
-            f"UPPER({field_mapping['name_field']}) LIKE '{pattern}'",
-            f"UPPER({field_mapping['lot_field']}) LIKE '{pattern}'",
-            f"UPPER({field_mapping['plan_field']}) LIKE '{pattern}'"
+            f"UPPER({field}) LIKE '{pattern}'" for field in unique_search_fields
         ]
         where_clause = f"({' OR '.join(where_clauses)})"
 
         offset = (page - 1) * page_size
 
-        out_fields = {
-            field_mapping['id_field'],
-            field_mapping['name_field'],
-            field_mapping['lot_field'],
-            field_mapping['plan_field'],
-            'locality'
-        }
+        out_fields = {field_mapping['id_field']}
+        for key in ('name_field', 'lot_field', 'plan_field'):
+            field_name = field_mapping.get(key)
+            if field_name:
+                out_fields.add(field_name)
+        for field in unique_search_fields:
+            out_fields.add(field)
+        for field in field_mapping.get('extra_fields', []):
+            out_fields.add(field)
 
         params = {
             'where': where_clause,
@@ -108,7 +131,7 @@ class ArcGISClient:
             'f': 'json',
             'resultOffset': offset,
             'resultRecordCount': page_size,
-            'orderByFields': f"{field_mapping['name_field']} ASC"
+            'orderByFields': f"{field_mapping.get('order_field', field_mapping['name_field'])} ASC"
         }
 
         query_url = f"{service_url}/query"
@@ -129,8 +152,15 @@ class ArcGISClient:
         payload = response.json()
 
         if 'error' in payload:
-            logger.error(f"ArcGIS API error: {payload['error']}")
-            return []
+            error_info = payload['error'] or {}
+            message = error_info.get('message') or 'ArcGIS API error'
+            details = error_info.get('details')
+            if details:
+                detail_text = '; '.join(str(item) for item in details if item)
+                if detail_text:
+                    message = f"{message}: {detail_text}"
+            logger.error(f"ArcGIS API error: {message}")
+            raise ArcGISError(message, code=error_info.get('code'))
 
         features = payload.get('features', [])
         results: List[SearchResult] = []

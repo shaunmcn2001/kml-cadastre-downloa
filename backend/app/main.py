@@ -13,7 +13,7 @@ from .models import (
     SearchRequest, SearchResult
 )
 from .parsers import parse_parcel_input
-from .arcgis import query_parcels_bulk, ArcGISClient
+from .arcgis import query_parcels_bulk, ArcGISClient, ArcGISError
 from .merge import dissolve_features, simplify_features
 from .exports.kml import export_kml
 from .exports.kmz import export_kmz  
@@ -294,6 +294,9 @@ async def search_parcels_endpoint(request: SearchRequest, req: Request):
 
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    except ArcGISError as exc:
+        logger.error(f"ArcGIS search failed: {exc}")
+        raise HTTPException(status_code=502, detail=str(exc))
     except Exception as exc:
         logger.error(f"Search failed: {exc}")
         raise HTTPException(status_code=500, detail="Failed to search parcels")

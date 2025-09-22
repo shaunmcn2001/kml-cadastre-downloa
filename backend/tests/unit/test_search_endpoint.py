@@ -19,6 +19,22 @@ def clear_cache():
 def mocked_httpx(monkeypatch):
     captured = {}
 
+    default_payload = {
+        'features': [
+            {
+                'attributes': {
+                    'cadid': '123456',
+                    'lotidstring': '1/DP123456',
+                    'lotnumber': '1',
+                    'planlabel': 'DP123456',
+                    'locality': 'SYDNEY'
+                }
+            }
+        ]
+    }
+
+    captured['payload'] = default_payload
+
     class MockResponse:
         status_code = 200
 
@@ -38,24 +54,15 @@ def mocked_httpx(monkeypatch):
         async def get(self, url, params=None):
             captured['url'] = url
             captured['params'] = params
-            data = {
-                'features': [
-                    {
-                        'attributes': {
-                            'cadid': '123456',
-                            'primaryaddress': '1 GEORGE STREET',
-                            'lotnumber': '1',
-                            'plannumber': 'DP123456',
-                            'locality': 'SYDNEY'
-                        }
-                    }
-                ]
-            }
-            return MockResponse(data)
+            return MockResponse(captured['payload'])
 
         async def aclose(self):
             return None
 
+    async def immediate_sleep(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.arcgis.asyncio.sleep", immediate_sleep)
     monkeypatch.setattr("app.arcgis.httpx.AsyncClient", MockAsyncClient)
     return captured
 
@@ -78,14 +85,21 @@ def test_search_endpoint_success(mocked_httpx):
     result = data[0]
     assert result['id'] == '123456'
     assert result['state'] == 'NSW'
-    assert 'GEORGE' in result['label'].upper()
+    assert '1/DP123456' in result['label']
+    assert 'LOT 1 DP123456' in result['label'].upper()
     assert result['lot'] == '1'
     assert result['plan'] == 'DP123456'
+    assert result['address'] == '1/DP123456'
 
     params = mocked_httpx['params']
     assert params['returnGeometry'] == 'false'
-    assert 'primaryaddress' in params['outFields']
-    assert "UPPER(primaryaddress) LIKE '%GEORGE%" in params['where']
+    assert 'lotidstring' in params['outFields']
+    assert 'planlabel' in params['outFields']
+    assert params['orderByFields'] == 'lotidstring ASC'
+    assert "UPPER(lotidstring) LIKE '%GEORGE%STREET%'" in params['where']
+    assert "UPPER(lotnumber) LIKE '%GEORGE%STREET%'" in params['where']
+    assert "UPPER(planlabel) LIKE '%GEORGE%STREET%'" in params['where']
+    assert 'plannumber' not in params['where']
 
 
 def test_search_endpoint_non_nsw():
@@ -108,3 +122,22 @@ def test_search_endpoint_short_term():
 
     response = client.post("/api/search", json=payload)
     assert response.status_code == 422
+
+
+def test_search_endpoint_arcgis_error(mocked_httpx):
+    mocked_httpx['payload'] = {
+        'error': {
+            'code': 500,
+            'message': 'Service unavailable'
+        }
+    }
+
+    payload = {
+        'state': 'NSW',
+        'term': 'George Street'
+    }
+
+    response = client.post("/api/search", json=payload)
+    assert response.status_code == 502
+    body = response.json()
+    assert body['error'] == 'Service unavailable'
