@@ -1,13 +1,15 @@
 import asyncio
 import logging
+import re
 from typing import List, Dict, Any, Optional
-from urllib.parse import urlencode
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential, before_sleep_log
-from .models import ParcelState, Feature
+from .models import ParcelState, Feature, SearchResult
 from .utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+MAX_SEARCH_PAGE_SIZE = 50
 
 # ArcGIS service endpoints
 ARCGIS_SERVICES = {
@@ -55,10 +57,102 @@ class ArcGISClient:
         wait=wait_exponential(multiplier=1, min=4, max=10),
         before_sleep=before_sleep_log(logger, logging.WARNING)
     )
+    async def search_parcels(
+        self,
+        state: ParcelState,
+        term: str,
+        page: int = 1,
+        page_size: int = 10
+    ) -> List[SearchResult]:
+        """Search parcel metadata for a given state and term."""
+
+        if state != ParcelState.NSW:
+            raise ValueError("Parcel search is currently supported only for NSW")
+
+        if page < 1:
+            page = 1
+        page_size = max(1, min(page_size, MAX_SEARCH_PAGE_SIZE))
+
+        sanitized_term = self._sanitize_search_term(term)
+        if not sanitized_term:
+            logger.debug("Search term sanitized to empty string; returning no results")
+            return []
+
+        field_mapping = STATE_FIELD_MAPPINGS[state]
+        service_url = ARCGIS_SERVICES[state]
+
+        like_value = sanitized_term.replace(" ", "%")
+        pattern = f"%{like_value}%"
+
+        where_clauses = [
+            f"UPPER({field_mapping['name_field']}) LIKE '{pattern}'",
+            f"UPPER({field_mapping['lot_field']}) LIKE '{pattern}'",
+            f"UPPER({field_mapping['plan_field']}) LIKE '{pattern}'"
+        ]
+        where_clause = f"({' OR '.join(where_clauses)})"
+
+        offset = (page - 1) * page_size
+
+        out_fields = {
+            field_mapping['id_field'],
+            field_mapping['name_field'],
+            field_mapping['lot_field'],
+            field_mapping['plan_field'],
+            'locality'
+        }
+
+        params = {
+            'where': where_clause,
+            'outFields': ','.join(sorted(out_fields)),
+            'returnGeometry': 'false',
+            'f': 'json',
+            'resultOffset': offset,
+            'resultRecordCount': page_size,
+            'orderByFields': f"{field_mapping['name_field']} ASC"
+        }
+
+        query_url = f"{service_url}/query"
+
+        logger.info(
+            "Searching parcels",
+            extra={
+                'state': state.value,
+                'term': sanitized_term,
+                'page': page,
+                'page_size': page_size
+            }
+        )
+
+        response = await self.session.get(query_url, params=params)
+        response.raise_for_status()
+
+        payload = response.json()
+
+        if 'error' in payload:
+            logger.error(f"ArcGIS API error: {payload['error']}")
+            return []
+
+        features = payload.get('features', [])
+        results: List[SearchResult] = []
+
+        for feature in features:
+            attributes = feature.get('attributes') or {}
+            result = self._build_search_result(attributes, field_mapping)
+            if result:
+                results.append(result)
+
+        logger.info(f"Search completed with {len(results)} results")
+        return results
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        before_sleep=before_sleep_log(logger, logging.WARNING)
+    )
     async def query_features(
-        self, 
-        state: ParcelState, 
-        parcel_ids: List[str], 
+        self,
+        state: ParcelState,
+        parcel_ids: List[str],
         bbox: Optional[List[float]] = None
     ) -> List[Dict[str, Any]]:
         """Query features from ArcGIS service for given parcel IDs."""
@@ -130,9 +224,9 @@ class ArcGISClient:
         return all_features
 
     def _process_feature(
-        self, 
-        feature: Dict[str, Any], 
-        state: ParcelState, 
+        self,
+        feature: Dict[str, Any],
+        state: ParcelState,
         field_mapping: Dict[str, str]
     ) -> Optional[Dict[str, Any]]:
         """Process and standardize a feature from ArcGIS response."""
@@ -177,6 +271,56 @@ class ArcGISClient:
         except Exception as e:
             logger.error(f"Error processing feature: {e}")
             return None
+
+    def _sanitize_search_term(self, term: str) -> str:
+        """Sanitize search term for safe ArcGIS LIKE queries."""
+        cleaned = re.sub(r"[^A-Za-z0-9\s/\-]", " ", term.upper())
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        return cleaned[:100]
+
+    def _build_search_result(
+        self,
+        attributes: Dict[str, Any],
+        field_mapping: Dict[str, str]
+    ) -> Optional[SearchResult]:
+        """Build a SearchResult model from ArcGIS attributes."""
+
+        parcel_id = attributes.get(field_mapping['id_field'])
+        if parcel_id is None:
+            return None
+
+        address = attributes.get(field_mapping['name_field'])
+        lot = attributes.get(field_mapping['lot_field'])
+        plan = attributes.get(field_mapping['plan_field'])
+        locality = attributes.get('locality')
+
+        label_parts = []
+        if address:
+            label_parts.append(str(address))
+
+        title_parts = []
+        if lot:
+            title_parts.append(f"Lot {lot}")
+        if plan:
+            title_parts.append(str(plan))
+
+        if title_parts:
+            label_parts.append(" ".join(title_parts))
+
+        if locality and locality not in label_parts:
+            label_parts.append(str(locality))
+
+        label = " · ".join(label_parts) if label_parts else str(parcel_id)
+
+        return SearchResult(
+            id=str(parcel_id),
+            state=ParcelState.NSW,
+            label=label,
+            address=str(address) if address is not None else None,
+            lot=str(lot) if lot is not None else None,
+            plan=str(plan) if plan is not None else None,
+            locality=str(locality) if locality is not None else None
+        )
 
 async def query_parcels_bulk(
     parcel_ids_by_state: Dict[ParcelState, List[str]],

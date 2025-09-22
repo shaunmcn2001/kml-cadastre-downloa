@@ -36,6 +36,7 @@ ARCGIS_TIMEOUT_S=20                             # ArcGIS request timeout
 ### Core Endpoints
 
 - `POST /api/parse` - Parse and validate parcel identifiers
+- `POST /api/search` - Search NSW parcel metadata by address or title (NSW only)
 - `POST /api/query` - Query parcel data from ArcGIS services
 - `POST /api/kml` - Export features as KML
 - `POST /api/kmz` - Export features as KMZ (compressed)
@@ -98,3 +99,4 @@ pytest tests/integration/
 # Run all tests
 pytest
 ```
+- The parcel search endpoint currently queries only the NSW cadastre service.

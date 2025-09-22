@@ -8,11 +8,12 @@ from fastapi.responses import JSONResponse
 import uvicorn
 
 from .models import (
-    ParseRequest, ParseResponse, QueryRequest, FeatureCollection, 
-    ExportRequest, ErrorResponse, HealthResponse, ParcelState
+    ParseRequest, ParseResponse, QueryRequest, FeatureCollection,
+    ExportRequest, ErrorResponse, HealthResponse, ParcelState,
+    SearchRequest, SearchResult
 )
 from .parsers import parse_parcel_input
-from .arcgis import query_parcels_bulk
+from .arcgis import query_parcels_bulk, ArcGISClient
 from .merge import dissolve_features, simplify_features
 from .exports.kml import export_kml
 from .exports.kmz import export_kmz  
@@ -167,6 +168,50 @@ async def parse_input(request: ParseRequest, req: Request):
     except Exception as e:
         logger.error(f"Parse failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/search", response_model=List[SearchResult])
+async def search_parcels_endpoint(request: SearchRequest, req: Request):
+    """Search for parcels using ArcGIS services."""
+
+    client_ip = req.client.host if req.client else "unknown"
+    if not rate_limiter.is_allowed(client_ip):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+
+    if request.state != ParcelState.NSW:
+        raise HTTPException(status_code=400, detail="Search is currently supported only for NSW")
+
+    cache_key = {
+        'state': request.state.value,
+        'term': request.term.upper(),
+        'page': request.page,
+        'pageSize': request.pageSize
+    }
+
+    cached_result = cache.get(cache_key)
+    if cached_result is not None:
+        logger.info("Returning cached search result")
+        return cached_result
+
+    try:
+        async with ArcGISClient(timeout=ARCGIS_TIMEOUT, max_ids_per_chunk=MAX_IDS_PER_CHUNK) as client:
+            results = await client.search_parcels(
+                request.state,
+                request.term,
+                page=request.page,
+                page_size=request.pageSize
+            )
+
+        cache.set(cache_key, results)
+        logger.info(f"Search completed: {len(results)} results returned")
+        return results
+
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.error(f"Search failed: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to search parcels")
+
 
 @app.post("/api/query", response_model=FeatureCollection)
 async def query_parcels(request: QueryRequest, req: Request):
