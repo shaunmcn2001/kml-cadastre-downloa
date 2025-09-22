@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List, Dict, Any
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 import uvicorn
 
 from .models import (
@@ -147,6 +147,92 @@ async def health_check():
         timestamp=datetime.utcnow().isoformat(),
         version="1.0.0"
     )
+
+
+@app.get("/ui", response_class=HTMLResponse)
+async def ui_page():
+    """Serve a minimal HTML user interface for testing the API."""
+    return """
+    <!DOCTYPE html>
+    <html lang=\"en\">
+        <head>
+            <meta charset=\"utf-8\" />
+            <title>KML Downloads UI</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 2rem; }
+                h1 { color: #1f2937; }
+                section { margin-bottom: 1.5rem; }
+                label { display: block; margin-bottom: 0.5rem; font-weight: bold; }
+                textarea { width: 100%; height: 6rem; }
+                input, button { padding: 0.5rem 1rem; margin-top: 0.5rem; }
+                pre { background: #f3f4f6; padding: 1rem; overflow-x: auto; }
+                .links a { display: inline-block; margin-right: 1rem; }
+            </style>
+        </head>
+        <body>
+            <h1>KML Downloads UI</h1>
+            <p>Use this page to quickly access the API endpoints.</p>
+            <section>
+                <h2>Parse parcels</h2>
+                <form action=\"/api/parse\" method=\"post\" target=\"_blank\">
+                    <label for=\"parse-state\">State abbreviation</label>
+                    <input id=\"parse-state\" name=\"state\" value=\"NSW\" />
+                    <label for=\"parse-input\">Parcel identifiers</label>
+                    <textarea id=\"parse-input\" name=\"rawText\">1/12345</textarea>
+                    <button type=\"submit\">Parse</button>
+                </form>
+            </section>
+            <section>
+                <h2>Search parcels</h2>
+                <button type=\"button\" id=\"search-demo\">Run sample search</button>
+                <pre id=\"search-output\">Click the button to call /api/search with a demo payload.</pre>
+            </section>
+            <section>
+                <h2>Query parcels</h2>
+                <button type=\"button\" id=\"query-demo\">Run sample query</button>
+                <pre id=\"query-output\">Click the button to call /api/query with a demo payload.</pre>
+            </section>
+            <section class=\"links\">
+                <h2>Documentation</h2>
+                <a href=\"/docs\" target=\"_blank\">Interactive API docs</a>
+                <a href=\"/redoc\" target=\"_blank\">OpenAPI schema</a>
+            </section>
+            <script>
+                async function callEndpoint(url, payload, outputId) {
+                    const output = document.getElementById(outputId);
+                    output.textContent = 'Calling ' + url + '...';
+                    try {
+                        const response = await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        const text = await response.text();
+                        output.textContent = text;
+                    } catch (error) {
+                        output.textContent = 'Error: ' + error;
+                    }
+                }
+
+                document.getElementById('search-demo').addEventListener('click', () => {
+                    callEndpoint('/api/search', {
+                        state: 'NSW',
+                        term: '123',
+                        page: 1,
+                        pageSize: 5
+                    }, 'search-output');
+                });
+
+                document.getElementById('query-demo').addEventListener('click', () => {
+                    callEndpoint('/api/query', {
+                        state: 'NSW',
+                        ids: ['1/12345']
+                    }, 'query-output');
+                });
+            </script>
+        </body>
+    </html>
+    """
 
 @app.post("/api/parse", response_model=ParseResponse)
 async def parse_input(request: ParseRequest, req: Request):
