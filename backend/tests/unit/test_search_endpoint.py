@@ -27,7 +27,7 @@ def mocked_httpx(monkeypatch):
                     'lotidstring': '1/DP123456',
                     'lotnumber': '1',
                     'planlabel': 'DP123456',
-                    'locality': 'SYDNEY'
+                    'sectionnumber': 'A'
                 }
             }
         ]
@@ -95,10 +95,12 @@ def test_search_endpoint_success(mocked_httpx):
     assert params['returnGeometry'] == 'false'
     assert 'lotidstring' in params['outFields']
     assert 'planlabel' in params['outFields']
-    assert params['orderByFields'] == 'lotidstring ASC'
+    assert 'locality' not in params['outFields']
+    assert params['orderByFields'] == 'planlabel ASC'
     assert "UPPER(lotidstring) LIKE '%GEORGE%STREET%'" in params['where']
     assert "UPPER(lotnumber) LIKE '%GEORGE%STREET%'" in params['where']
     assert "UPPER(planlabel) LIKE '%GEORGE%STREET%'" in params['where']
+    assert "UPPER(sectionnumber) LIKE '%GEORGE%STREET%'" in params['where']
     assert 'plannumber' not in params['where']
 
 
