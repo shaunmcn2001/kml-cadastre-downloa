@@ -551,6 +551,28 @@ async def ui_page():
                         queryButton.textContent = queryButton.dataset.defaultText;
                     }
 
+                    function getSelectedStates() {
+                        const fallbackState = stateField.value.trim().toUpperCase();
+                        if (selectedParcels.size === 0) {
+                            return [fallbackState];
+                        }
+
+                        const states = new Set();
+                        selectedParcels.forEach((item) => {
+                            const candidate =
+                                typeof item.state === 'string' && item.state.trim()
+                                    ? item.state.trim().toUpperCase()
+                                    : fallbackState;
+                            states.add(candidate);
+                        });
+
+                        if (!states.size) {
+                            states.add(fallbackState);
+                        }
+
+                        return Array.from(states);
+                    }
+
                     async function runSearch() {
                         const state = stateField.value.trim().toUpperCase();
                         const term = termField.value.trim();
@@ -639,19 +661,23 @@ async def ui_page():
                         }
 
                         queryButton.disabled = true;
+                        if (!queryButton.dataset.defaultText) {
+                            queryButton.dataset.defaultText = queryButton.textContent;
+                        }
                         queryButton.textContent = 'Loading…';
                         setStatus(queryStatus, 'Querying selected parcels…');
                         exportKmlButton.disabled = true;
                         exportKmzButton.disabled = true;
 
                         const ids = Array.from(selectedParcels.keys());
-                        const states = Array.from(new Set(Array.from(selectedParcels.values()).map((item) => item.state || stateField.value.trim().toUpperCase())));
+                        const states = getSelectedStates();
+                        const payload = { states, ids };
 
                         try {
                             const response = await fetch('/api/query', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ states, ids })
+                                body: JSON.stringify(payload)
                             });
 
                             if (!response.ok) {
