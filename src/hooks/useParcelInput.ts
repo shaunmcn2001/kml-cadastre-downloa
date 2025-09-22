@@ -75,10 +75,46 @@ export function useParcelInput() {
     }));
   }, []);
 
+  const appendParcelIdentifier = useCallback((identifier: string) => {
+    let appended = false;
+
+    setInputState(prev => {
+      const trimmedIdentifier = identifier.trim();
+      if (!trimmedIdentifier) {
+        return prev;
+      }
+
+      const existingEntries = prev.rawInput
+        .split(/\r?\n/)
+        .map(entry => entry.trim())
+        .filter(Boolean);
+
+      if (existingEntries.includes(trimmedIdentifier)) {
+        return prev;
+      }
+
+      const prefix = prev.rawInput.trimEnd();
+      const nextRawInput = prefix ? `${prefix}\n${trimmedIdentifier}` : trimmedIdentifier;
+      const { valid, malformed } = parseParcelInput(prev.selectedState, nextRawInput);
+
+      appended = true;
+
+      return {
+        ...prev,
+        rawInput: nextRawInput,
+        validParcels: valid,
+        malformedEntries: malformed,
+        isValid: valid.length > 0
+      };
+    });
+    return appended;
+  }, []);
+
   return {
     inputState,
     updateRawInput,
     updateSelectedState,
-    clearInput
+    clearInput,
+    appendParcelIdentifier
   };
 }
