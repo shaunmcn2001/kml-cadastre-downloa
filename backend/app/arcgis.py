@@ -25,9 +25,11 @@ STATE_FIELD_MAPPINGS = {
         'name_field': 'lotidstring',
         'lot_field': 'lotnumber',
         'plan_field': 'planlabel',
-        'search_fields': ['lotidstring', 'lotnumber', 'planlabel'],
-        'order_field': 'lotidstring',
-        'extra_fields': ['locality']
+        'order_field': 'planlabel',
+        'search_fields': ['planlabel', 'lotidstring', 'lotnumber', 'sectionnumber'],
+        'like_fields': ['planlabel', 'lotidstring', 'lotnumber', 'sectionnumber'],
+        'locality_field': None,
+        'extra_fields': []
     },
     ParcelState.QLD: {
         'id_field': 'lotplan',
@@ -35,6 +37,7 @@ STATE_FIELD_MAPPINGS = {
         'lot_field': 'lot',
         'plan_field': 'plan',
         'search_fields': ['addr_legal', 'lot', 'plan'],
+        'like_fields': ['addr_legal', 'lot', 'plan'],
         'extra_fields': ['locality']
     },
     ParcelState.SA: {
@@ -43,6 +46,7 @@ STATE_FIELD_MAPPINGS = {
         'lot_field': 'lot_number',
         'plan_field': 'plan_number',
         'search_fields': ['legal_desc', 'lot_number', 'plan_number'],
+        'like_fields': ['legal_desc', 'lot_number', 'plan_number'],
         'extra_fields': ['locality']
     }
 }
@@ -106,23 +110,38 @@ class ArcGISClient:
             field_mapping['plan_field']
         ]
         # Preserve ordering while ensuring we only query distinct fields
-        unique_search_fields = list(dict.fromkeys(search_fields))
+        unique_search_fields = [field for field in dict.fromkeys(search_fields) if field]
+
+        like_fields = field_mapping.get('like_fields') or unique_search_fields
+        unique_like_fields = [field for field in dict.fromkeys(like_fields) if field]
+        if not unique_like_fields:
+            unique_like_fields = [field_mapping['name_field']]
+
         where_clauses = [
-            f"UPPER({field}) LIKE '{pattern}'" for field in unique_search_fields
+            f"UPPER({field}) LIKE '{pattern}'" for field in unique_like_fields
         ]
         where_clause = f"({' OR '.join(where_clauses)})"
 
         offset = (page - 1) * page_size
 
         out_fields = {field_mapping['id_field']}
-        for key in ('name_field', 'lot_field', 'plan_field'):
+        for key in ('name_field', 'lot_field', 'plan_field', 'order_field'):
             field_name = field_mapping.get(key)
             if field_name:
                 out_fields.add(field_name)
         for field in unique_search_fields:
             out_fields.add(field)
+        for field in unique_like_fields:
+            out_fields.add(field)
+
+        locality_field = field_mapping.get('locality_field')
+        if locality_field:
+            out_fields.add(locality_field)
+
         for field in field_mapping.get('extra_fields', []):
             out_fields.add(field)
+
+        order_field = field_mapping.get('order_field') or field_mapping['name_field']
 
         params = {
             'where': where_clause,
@@ -131,8 +150,10 @@ class ArcGISClient:
             'f': 'json',
             'resultOffset': offset,
             'resultRecordCount': page_size,
-            'orderByFields': f"{field_mapping.get('order_field', field_mapping['name_field'])} ASC"
         }
+
+        if order_field:
+            params['orderByFields'] = f"{order_field} ASC"
 
         query_url = f"{service_url}/query"
 
@@ -322,7 +343,9 @@ class ArcGISClient:
         address = attributes.get(field_mapping['name_field'])
         lot = attributes.get(field_mapping['lot_field'])
         plan = attributes.get(field_mapping['plan_field'])
-        locality = attributes.get('locality')
+
+        locality_field = field_mapping.get('locality_field', 'locality')
+        locality = attributes.get(locality_field) if locality_field else None
 
         label_parts = []
         if address:
