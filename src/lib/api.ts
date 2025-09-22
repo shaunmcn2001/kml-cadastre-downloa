@@ -1,12 +1,14 @@
 import { getConfig } from './config';
-import type { 
-  ParseRequest, 
-  ParseResponse, 
-  QueryRequest, 
-  QueryResponse, 
+import type {
+  ParseRequest,
+  ParseResponse,
+  QueryRequest,
+  QueryResponse,
   ExportRequest,
+  ParcelSearchRequest,
+  ParcelSearchResponse,
   ApiError,
-  DebugEntry 
+  DebugEntry
 } from './types';
 
 class ApiClient {
@@ -115,6 +117,10 @@ class ApiClient {
 
   async queryParcels(request: QueryRequest): Promise<QueryResponse> {
     return this.makeRequest<QueryResponse>('POST', '/api/query', request);
+  }
+
+  async searchParcels(request: ParcelSearchRequest): Promise<ParcelSearchResponse> {
+    return this.makeRequest<ParcelSearchResponse>('POST', '/api/search', request);
   }
 
   async exportKML(request: ExportRequest): Promise<Blob> {

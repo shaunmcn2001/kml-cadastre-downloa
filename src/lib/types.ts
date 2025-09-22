@@ -54,6 +54,25 @@ export interface QueryResponse {
   features: ParcelFeature[];
 }
 
+export interface ParcelSearchRequest {
+  state: ParcelState;
+  term: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface ParcelSearchResult {
+  id: string;
+  state: ParcelState;
+  label: string;
+  address?: string;
+  lot?: string;
+  plan?: string;
+  locality?: string;
+}
+
+export type ParcelSearchResponse = ParcelSearchResult[];
+
 export interface ExportRequest {
   features: ParcelFeature[];
   styleOptions?: {

@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Database, AlertTriangle, CheckCircle } from '@phosphor-icons/react';
 import { useParcelInput } from '../hooks/useParcelInput';
 import type { ParcelState } from '../lib/types';
+import { NswParcelSearch } from './NswParcelSearch';
 
 interface ParcelInputPanelProps {
   onQueryParcels: (parcelIds: string[], states: ParcelState[]) => void;
@@ -16,7 +17,13 @@ interface ParcelInputPanelProps {
 }
 
 export function ParcelInputPanel({ onQueryParcels, isQuerying }: ParcelInputPanelProps) {
-  const { inputState, updateRawInput, updateSelectedState, clearInput } = useParcelInput();
+  const {
+    inputState,
+    updateRawInput,
+    updateSelectedState,
+    clearInput,
+    appendParcelIdentifier
+  } = useParcelInput();
   const [hasAttemptedQuery, setHasAttemptedQuery] = useState(false);
 
   const handleQuery = () => {
@@ -68,7 +75,7 @@ LOT 13 DP1242624
               <TabsTrigger value="SA">SA</TabsTrigger>
             </TabsList>
             
-            <TabsContent value="NSW" className="space-y-3 mt-4">
+            <TabsContent value="NSW" className="space-y-4 mt-4">
               <div className="text-sm text-muted-foreground">
                 <p className="font-medium mb-2">NSW Format Examples:</p>
                 <div className="bg-muted p-2 rounded text-xs font-mono">
@@ -78,6 +85,11 @@ LOT 13 DP1242624
                   Supports: LOT//PLAN, LOT/SECTION//PLAN, ranges (1-3//DP123), and "LOT 13 DP1242624" format
                 </p>
               </div>
+
+              <NswParcelSearch
+                onParcelSelect={appendParcelIdentifier}
+                disabled={isQuerying}
+              />
             </TabsContent>
             
             <TabsContent value="QLD" className="space-y-3 mt-4">

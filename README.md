@@ -6,6 +6,7 @@ A modern React application for downloading Australian cadastral data as KML/KMZ 
 
 - **Multi-State Support**: Parse and query parcels from NSW, QLD, and SA
 - **Bulk Processing**: Handle large sets of parcel identifiers with validation
+- **NSW Parcel Search**: Discover NSW parcels via live MapServer/9 search results
 - **Interactive Map**: Preview queried parcels with Leaflet integration
 - **Multiple Export Formats**: Download as KML, KMZ, or GeoTIFF
 - **Real-time Validation**: Immediate feedback on parcel ID formats
@@ -64,6 +65,12 @@ npm run preview
 4. **Query**: Click "Query Parcels" to fetch data from the backend
 5. **Preview**: View results on the interactive map
 6. **Export**: Download as KML, KMZ, or GeoTIFF
+
+### NSW Parcel Search
+
+- Switch to the **NSW** tab and use the "Search NSW Parcels" box to look up parcels by address, lot, or plan.
+- Results stream from the NSW Spatial Services MapServer/9 endpoint and can be clicked to add `LOT//PLAN` tokens to your parcel list automatically.
+- Duplicate selections are ignored gracefully, and toast notifications confirm when parcels are appended to the NSW textarea.
 
 ### Supported Formats
 
