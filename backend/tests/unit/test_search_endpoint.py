@@ -104,6 +104,21 @@ def test_search_endpoint_success(mocked_httpx):
     assert 'plannumber' not in params['where']
 
 
+def test_search_endpoint_structured_lot_plan(mocked_httpx):
+    payload = {
+        'state': 'NSW',
+        'term': '193//DP755741',
+    }
+
+    response = client.post("/api/search", json=payload)
+    assert response.status_code == 200
+
+    params = mocked_httpx['params']
+    assert params['where'] == "(lotnumber = '193' AND UPPER(planlabel) LIKE 'DP755741%')"
+    assert "UPPER(lotnumber) LIKE" not in params['where']
+    assert "193//DP755741" not in params['where']
+
+
 def test_search_endpoint_non_nsw():
     payload = {
         'state': 'QLD',

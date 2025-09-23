@@ -24,6 +24,7 @@ STATE_FIELD_MAPPINGS = {
         'id_field': 'cadid',
         'name_field': 'lotidstring',
         'lot_field': 'lotnumber',
+        'section_field': 'sectionnumber',
         'plan_field': 'planlabel',
         'order_field': 'planlabel',
         'search_fields': ['planlabel', 'lotidstring', 'lotnumber', 'sectionnumber'],
@@ -101,9 +102,6 @@ class ArcGISClient:
         field_mapping = STATE_FIELD_MAPPINGS[state]
         service_url = ARCGIS_SERVICES[state]
 
-        like_value = sanitized_term.replace(" ", "%")
-        pattern = f"%{like_value}%"
-
         search_fields = field_mapping.get('search_fields') or [
             field_mapping['name_field'],
             field_mapping['lot_field'],
@@ -117,10 +115,48 @@ class ArcGISClient:
         if not unique_like_fields:
             unique_like_fields = [field_mapping['name_field']]
 
-        where_clauses = [
-            f"UPPER({field}) LIKE '{pattern}'" for field in unique_like_fields
-        ]
-        where_clause = f"({' OR '.join(where_clauses)})"
+        where_clause: Optional[str] = None
+
+        if state == ParcelState.NSW:
+            # Detect structured NSW parcel queries of the form lot[/section]//plan.
+            # These inputs break the generic wildcard search (because of the
+            # literal "//"), so we convert them into precise equality checks
+            # that match the dedicated lot/section/plan fields.
+            compact_term = sanitized_term.replace(" ", "")
+            match = re.fullmatch(
+                r"(?P<lot>[A-Z0-9\-]+)(?:/(?P<section>[A-Z0-9\-]+))?//(?P<plan>[A-Z0-9\-]+)",
+                compact_term,
+            )
+            if match:
+                lot_value = match.group('lot')
+                section_value = match.group('section')
+                plan_value = match.group('plan')
+
+                lot_field = field_mapping.get('lot_field')
+                plan_field = field_mapping.get('plan_field')
+                section_field = field_mapping.get('section_field')
+
+                precise_clauses = []
+                if lot_field and lot_value:
+                    precise_clauses.append(f"{lot_field} = '{lot_value}'")
+                if section_field and section_value:
+                    precise_clauses.append(f"{section_field} = '{section_value}'")
+                if plan_field and plan_value:
+                    precise_clauses.append(
+                        f"UPPER({plan_field}) LIKE '{plan_value}%'"
+                    )
+
+                if precise_clauses:
+                    where_clause = f"({' AND '.join(precise_clauses)})"
+
+        if where_clause is None:
+            like_value = sanitized_term.replace(" ", "%")
+            pattern = f"%{like_value}%"
+
+            where_clauses = [
+                f"UPPER({field}) LIKE '{pattern}'" for field in unique_like_fields
+            ]
+            where_clause = f"({' OR '.join(where_clauses)})"
 
         offset = (page - 1) * page_size
 
