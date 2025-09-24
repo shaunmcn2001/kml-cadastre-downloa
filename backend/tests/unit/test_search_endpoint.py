@@ -24,7 +24,7 @@ def mocked_httpx(monkeypatch):
             {
                 'attributes': {
                     'cadid': '123456',
-                    'lotidstring': '1/DP123456',
+                    'lotidstring': '1//DP123456',
                     'lotnumber': '1',
                     'planlabel': 'DP123456',
                     'sectionnumber': 'A'
@@ -83,13 +83,13 @@ def test_search_endpoint_success(mocked_httpx):
     assert len(data) == 1
 
     result = data[0]
-    assert result['id'] == '123456'
+    assert result['id'] == '1//DP123456'
     assert result['state'] == 'NSW'
-    assert '1/DP123456' in result['label']
+    assert '1//DP123456' in result['label']
     assert 'LOT 1 DP123456' in result['label'].upper()
     assert result['lot'] == '1'
     assert result['plan'] == 'DP123456'
-    assert result['address'] == '1/DP123456'
+    assert result['address'] == '1//DP123456'
 
     params = mocked_httpx['params']
     assert params['returnGeometry'] == 'false'
