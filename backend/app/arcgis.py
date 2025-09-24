@@ -21,7 +21,7 @@ ARCGIS_SERVICES = {
 # Field mappings for different states
 STATE_FIELD_MAPPINGS = {
     ParcelState.NSW: {
-        'id_field': 'cadid',
+        'id_field': 'lotidstring',
         'name_field': 'lotidstring',
         'lot_field': 'lotnumber',
         'section_field': 'sectionnumber',
@@ -30,7 +30,7 @@ STATE_FIELD_MAPPINGS = {
         'search_fields': ['planlabel', 'lotidstring', 'lotnumber', 'sectionnumber'],
         'like_fields': ['planlabel', 'lotidstring', 'lotnumber', 'sectionnumber'],
         'locality_field': None,
-        'extra_fields': []
+        'extra_fields': ['cadid']
     },
     ParcelState.QLD: {
         'id_field': 'lotplan',
@@ -252,8 +252,20 @@ class ArcGISClient:
         for i in range(0, len(parcel_ids), self.max_ids_per_chunk):
             chunk = parcel_ids[i:i + self.max_ids_per_chunk]
             
-            # Build WHERE clause
-            where_conditions = [f"'{pid}'" for pid in chunk]
+            # Build WHERE clause with escaped identifiers
+            where_conditions = []
+            for parcel_id in chunk:
+                parcel_id_str = str(parcel_id)
+                if not parcel_id_str:
+                    continue
+
+                escaped_id = parcel_id_str.replace("'", "''")
+                where_conditions.append(f"'{escaped_id}'")
+
+            if not where_conditions:
+                logger.warning(f"Skipping empty ID chunk for {state.value}")
+                continue
+
             where_clause = f"{field_mapping['id_field']} IN ({','.join(where_conditions)})"
             
             params = {
