@@ -1,5 +1,7 @@
-from typing import List
+from typing import List, Optional
+
 import simplekml
+
 from ..models import Feature, StyleOptions
 from ..utils.logging import get_logger
 
@@ -11,6 +13,53 @@ STATE_COLORS = {
     'QLD': simplekml.Color.red,
     'SA': simplekml.Color.green,
 }
+
+_DEFAULT_STYLE = StyleOptions()
+_DEFAULT_FILL_OPACITY = _DEFAULT_STYLE.fillOpacity or 0.0
+_DEFAULT_STROKE_WIDTH = _DEFAULT_STYLE.strokeWidth or 3.0
+
+
+def _opacity_to_alpha(opacity: Optional[float]) -> int:
+    if opacity is None:
+        opacity = _DEFAULT_FILL_OPACITY
+    alpha = int(round(opacity * 255))
+    return max(0, min(255, alpha))
+
+
+def _hex_to_kml_color(hex_color: str, opacity: Optional[float] = 1.0) -> str:
+    color = hex_color.lstrip('#')
+    red, green, blue = color[0:2], color[2:4], color[4:6]
+    alpha = _opacity_to_alpha(opacity)
+    return f"{alpha:02x}{blue.lower()}{green.lower()}{red.lower()}"
+
+
+def _apply_opacity_to_kml_color(color: str, opacity: Optional[float]) -> str:
+    alpha = _opacity_to_alpha(opacity)
+    if isinstance(color, str) and len(color) == 8:
+        return f"{alpha:02x}{color[2:]}"
+    return f"{alpha:02x}0000ff"
+
+
+def _build_style(
+    base_color: str,
+    style_options: StyleOptions,
+    fill_override: Optional[str] = None,
+    stroke_override: Optional[str] = None,
+) -> simplekml.Style:
+    style = simplekml.Style()
+    style.polystyle.fill = 1
+    style.polystyle.outline = 1
+    style.polystyle.altitudemode = simplekml.AltitudeMode.clamptoground
+
+    fill_color = fill_override or _apply_opacity_to_kml_color(base_color, style_options.fillOpacity)
+    style.polystyle.color = fill_color
+
+    stroke_color = stroke_override or base_color
+    style.linestyle.color = stroke_color
+    stroke_width = style_options.strokeWidth if style_options.strokeWidth is not None else _DEFAULT_STROKE_WIDTH
+    style.linestyle.width = stroke_width
+    return style
+
 
 def export_kml(features: List[Feature], style_options: StyleOptions = None) -> str:
     """Export features to KML format with sidebar-only lotplan names and no snippet."""
@@ -46,79 +95,66 @@ def export_kml(features: List[Feature], style_options: StyleOptions = None) -> s
             folder.description = ""  # Remove folder descriptions as requested
 
             # Create style for this state
-            style = simplekml.Style()
-            style.polystyle.color = STATE_COLORS.get(state, simplekml.Color.gray)
-            style.polystyle.fill = 1
-            style.polystyle.outline = 1
-            style.polystyle.altitudemode = simplekml.AltitudeMode.clamptoground
-
-            # Set opacity
-            alpha = int(style_options.fillOpacity * 255)
-            # simplekml colors are AABBGGRR (hex string)
-            # Convert the existing color to a string, then replace alpha (first 2 chars)
-            current_color = style.polystyle.color
-            if isinstance(current_color, str) and len(current_color) == 8:
-                style.polystyle.color = f"{alpha:02x}{current_color[2:]}"
-            else:
-                # default to blue with alpha if unexpected format
-                style.polystyle.color = f"{alpha:02x}0000ff"
-
-            style.linestyle.color = STATE_COLORS.get(state, simplekml.Color.gray)
-            style.linestyle.width = style_options.strokeWidth
+            base_color = STATE_COLORS.get(state, simplekml.Color.gray)
+            style = _build_style(
+                base_color,
+                style_options,
+            )
 
             _add_features_to_container(folder, state_features, style)
     elif style_options.folderName:
         # Single custom folder for all features, styled by state but in one folder
         folder = kml.newfolder(name=style_options.folderName.strip())
         folder.description = ""  # Remove folder description as requested
-        
+
         if style_options.colorByState:
             # Group by state for styling but keep in single folder
             features_by_state = {}
             for feature in features:
                 state = feature.properties.state
                 features_by_state.setdefault(state, []).append(feature)
-            
+
             for state, state_features in features_by_state.items():
                 # Create style for this state
-                style = simplekml.Style()
-                style.polystyle.color = STATE_COLORS.get(state, simplekml.Color.gray)
-                style.polystyle.fill = 1
-                style.polystyle.outline = 1
-                style.polystyle.altitudemode = simplekml.AltitudeMode.clamptoground
-
-                # Set opacity
-                alpha = int(style_options.fillOpacity * 255)
-                current_color = style.polystyle.color
-                if isinstance(current_color, str) and len(current_color) == 8:
-                    style.polystyle.color = f"{alpha:02x}{current_color[2:]}"
-                else:
-                    style.polystyle.color = f"{alpha:02x}0000ff"
-
-                style.linestyle.color = STATE_COLORS.get(state, simplekml.Color.gray)
-                style.linestyle.width = style_options.strokeWidth
+                base_color = STATE_COLORS.get(state, simplekml.Color.gray)
+                style = _build_style(
+                    base_color,
+                    style_options,
+                )
 
                 _add_features_to_container(folder, state_features, style)
         else:
             # Single style for all features in custom folder
-            style = simplekml.Style()
-            style.polystyle.fill = 1
-            style.polystyle.outline = 1
-            alpha = int(style_options.fillOpacity * 255)
-            style.polystyle.color = f"{alpha:02x}0000ff"  # Blue with alpha (AABBGGRR)
-            style.linestyle.color = simplekml.Color.blue
-            style.linestyle.width = style_options.strokeWidth
-            
+            fill_override = None
+            stroke_override = None
+            if style_options.fillColor:
+                fill_override = _hex_to_kml_color(style_options.fillColor, style_options.fillOpacity)
+            if style_options.strokeColor:
+                stroke_override = _hex_to_kml_color(style_options.strokeColor, 1.0)
+
+            style = _build_style(
+                simplekml.Color.blue,
+                style_options,
+                fill_override=fill_override,
+                stroke_override=stroke_override,
+            )
+
             _add_features_to_container(folder, features, style)
     else:
         # Single style for all features
-        style = simplekml.Style()
-        style.polystyle.fill = 1
-        style.polystyle.outline = 1
-        alpha = int(style_options.fillOpacity * 255)
-        style.polystyle.color = f"{alpha:02x}0000ff"  # Blue with alpha (AABBGGRR)
-        style.linestyle.color = simplekml.Color.blue
-        style.linestyle.width = style_options.strokeWidth
+        fill_override = None
+        stroke_override = None
+        if style_options.fillColor:
+            fill_override = _hex_to_kml_color(style_options.fillColor, style_options.fillOpacity)
+        if style_options.strokeColor:
+            stroke_override = _hex_to_kml_color(style_options.strokeColor, 1.0)
+
+        style = _build_style(
+            simplekml.Color.blue,
+            style_options,
+            fill_override=fill_override,
+            stroke_override=stroke_override,
+        )
 
         _add_features_to_container(kml, features, style)
 

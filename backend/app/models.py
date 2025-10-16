@@ -80,14 +80,51 @@ class FeatureCollection(BaseModel):
     features: List[Feature]
 
 class StyleOptions(BaseModel):
-    fillOpacity: Optional[float] = 0.3
-    strokeWidth: Optional[float] = 2.0
+    fillOpacity: Optional[float] = 0.4
+    strokeWidth: Optional[float] = 3.0
     colorByState: Optional[bool] = True
     folderName: Optional[str] = None
+    fillColor: Optional[str] = None
+    strokeColor: Optional[str] = None
+
+    @field_validator("fillOpacity")
+    @classmethod
+    def validate_fill_opacity(cls, value: Optional[float]) -> Optional[float]:
+        if value is None:
+            return value
+        if not (0.0 <= value <= 1.0):
+            raise ValueError("fillOpacity must be between 0.0 and 1.0")
+        return value
+
+    @field_validator("strokeWidth")
+    @classmethod
+    def validate_stroke_width(cls, value: Optional[float]) -> Optional[float]:
+        if value is None:
+            return value
+        if value < 0:
+            raise ValueError("strokeWidth must be non-negative")
+        return value
+
+    @field_validator("fillColor", "strokeColor")
+    @classmethod
+    def validate_hex_color(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        hex_value = value.strip()
+        if not hex_value:
+            return None
+        if not hex_value.startswith('#') or len(hex_value) != 7:
+            raise ValueError("Color values must be provided in #RRGGBB format")
+        try:
+            int(hex_value[1:], 16)
+        except ValueError:
+            raise ValueError("Color values must be valid hexadecimal digits") from None
+        return hex_value.upper()
 
 class ExportRequest(BaseModel):
     features: List[Feature]
     styleOptions: Optional[StyleOptions] = None
+    fileName: Optional[str] = None
 
 class ErrorResponse(BaseModel):
     error: str

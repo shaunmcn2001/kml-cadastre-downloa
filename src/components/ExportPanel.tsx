@@ -102,24 +102,24 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
     try {
       console.log('Starting KML export for', features.length, 'features');
       
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `cadastral-parcels-${features.length}-${timestamp}.kml`;
+
       const blob = await apiClient.exportKML({
         features,
+        fileName: filename,
         styleOptions: {
-          fillOpacity: 0.3,
-          strokeWidth: 2,
+          fillOpacity: 0.4,
+          strokeWidth: 3,
           colorByState: true,
           googleEarthOptimized: true, // Enable Google Earth Web/Pro compatibility
           version: '2.3', // Use latest KML version
           folderName: folderName.trim() || undefined
         }
       });
-      
+
       console.log('KML blob received:', { size: blob.size, type: blob.type });
-      
-      // Generate filename with parcel count and timestamp
-      const timestamp = new Date().toISOString().split('T')[0];
-      const filename = `cadastral-parcels-${features.length}-${timestamp}.kml`;
-      
+
       const success = downloadFile(blob, filename);
       if (success) {
         toast.success(`KML downloaded successfully! Open in Google Earth Web or Google Earth Pro.`);
@@ -141,24 +141,24 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
     try {
       console.log('Starting KMZ export for', features.length, 'features');
       
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `cadastral-parcels-${features.length}-${timestamp}.kmz`;
+
       const blob = await apiClient.exportKMZ({
         features,
+        fileName: filename,
         styleOptions: {
-          fillOpacity: 0.3,
-          strokeWidth: 2,
+          fillOpacity: 0.4,
+          strokeWidth: 3,
           colorByState: true,
           googleEarthOptimized: true, // Enable Google Earth Web/Pro compatibility
           version: '2.3', // Use latest KML version
           folderName: folderName.trim() || undefined
         }
       });
-      
+
       console.log('KMZ blob received:', { size: blob.size, type: blob.type });
-      
-      // Generate filename with parcel count and timestamp
-      const timestamp = new Date().toISOString().split('T')[0];
-      const filename = `cadastral-parcels-${features.length}-${timestamp}.kmz`;
-      
+
       const success = downloadFile(blob, filename);
       if (success) {
         toast.success(`KMZ downloaded successfully! Open in Google Earth Pro for best results.`);
