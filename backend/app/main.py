@@ -1,7 +1,9 @@
 import os
+import re
 import uuid
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+from urllib.parse import quote
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
@@ -55,6 +57,38 @@ app.add_middleware(
 # Initialize services
 cache = get_cache(ttl=CACHE_TTL)
 rate_limiter = get_rate_limiter(max_requests=100, window_seconds=60)
+
+_FILENAME_SANITIZE_PATTERN = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _sanitize_export_filename(value: Optional[str], extension: str) -> Optional[str]:
+    if not value:
+        return None
+
+    trimmed = value.strip()
+    if not trimmed:
+        return None
+
+    if trimmed.lower().endswith(extension.lower()):
+        trimmed = trimmed[: -len(extension)]
+
+    cleaned = _FILENAME_SANITIZE_PATTERN.sub('-', trimmed)
+    cleaned = re.sub(r"-{2,}", '-', cleaned)
+    cleaned = cleaned.strip('-_.')
+
+    if not cleaned:
+        return None
+
+    # Limit filename length to avoid excessively long headers
+    cleaned = cleaned[:100]
+
+    return f"{cleaned}{extension}"
+
+
+def _build_content_disposition(filename: str) -> str:
+    safe = filename.replace('"', '')
+    utf8 = quote(safe)
+    return f"attachment; filename=\"{safe}\"; filename*=UTF-8''{utf8}"
 
 @app.middleware("http")
 async def request_logging_middleware(request: Request, call_next):
@@ -645,7 +679,7 @@ async def ui_page():
             const folderName = folderField.value.trim();
             const payload = {
               features: featureCollection.features,
-              filename: desiredFilename,
+              fileName: desiredFilename,
               styleOptions: {
                 fillOpacity: 0.4,
                 strokeWidth: 3,
@@ -990,12 +1024,15 @@ async def export_kml_endpoint(request: ExportRequest, req: Request):
     
     try:
         kml_content = export_kml(request.features, request.styleOptions)
-        
+        filename = _sanitize_export_filename(request.fileName, ".kml")
+        if not filename:
+            filename = f"parcels-{datetime.now().strftime('%Y%m%d')}.kml"
+
         return Response(
             content=kml_content,
             media_type="application/vnd.google-earth.kml+xml",
             headers={
-                "Content-Disposition": f"attachment; filename=parcels-{datetime.now().strftime('%Y%m%d')}.kml"
+                "Content-Disposition": _build_content_disposition(filename)
             }
         )
     except Exception as e:
@@ -1015,12 +1052,15 @@ async def export_kmz_endpoint(request: ExportRequest, req: Request):
     
     try:
         kmz_content = export_kmz(request.features, request.styleOptions)
-        
+        filename = _sanitize_export_filename(request.fileName, ".kmz")
+        if not filename:
+            filename = f"parcels-{datetime.now().strftime('%Y%m%d')}.kmz"
+
         return Response(
             content=kmz_content,
             media_type="application/vnd.google-earth.kmz",
             headers={
-                "Content-Disposition": f"attachment; filename=parcels-{datetime.now().strftime('%Y%m%d')}.kmz"
+                "Content-Disposition": _build_content_disposition(filename)
             }
         )
     except Exception as e:

@@ -75,6 +75,7 @@ export type ParcelSearchResponse = ParcelSearchResult[];
 
 export interface ExportRequest {
   features: ParcelFeature[];
+  fileName?: string;
   styleOptions?: {
     fillOpacity?: number;
     strokeWidth?: number;
@@ -82,6 +83,8 @@ export interface ExportRequest {
     googleEarthOptimized?: boolean;
     version?: string;
     folderName?: string;
+    fillColor?: string;
+    strokeColor?: string;
   };
 }
 

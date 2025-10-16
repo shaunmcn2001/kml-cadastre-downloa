@@ -94,6 +94,44 @@ class TestAPIEndpoints:
         response = client.post("/api/geotiff", json=payload)
         assert response.status_code == 400
 
+    def test_export_kml_custom_filename_and_style_options(self):
+        """Ensure custom colours and filenames are applied in KML exports."""
+        payload = {
+            "features": [
+                {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [
+                            [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]
+                        ]
+                    },
+                    "properties": {
+                        "id": "123",
+                        "state": "NSW",
+                        "name": "Test Lot"
+                    }
+                }
+            ],
+            "fileName": "../../My Custom.kml",
+            "styleOptions": {
+                "colorByState": False,
+                "fillColor": "#FFA500",
+                "strokeColor": "#112233"
+            }
+        }
+
+        response = client.post("/api/kml", json=payload)
+        assert response.status_code == 200
+
+        disposition = response.headers.get("content-disposition", "")
+        assert "filename=\"My-Custom.kml\"" in disposition
+        assert "filename*=UTF-8''My-Custom.kml" in disposition
+
+        content = response.text
+        assert "6600a5ff" in content  # Custom fill colour with default opacity
+        assert "ff332211" in content  # Custom stroke colour
+
     @pytest.mark.skipif(not os.getenv("RUN_NETWORK_TESTS"), reason="Network tests disabled")
     def test_search_endpoint_live(self):
         """Exercise the live NSW search endpoint when network tests are enabled."""
