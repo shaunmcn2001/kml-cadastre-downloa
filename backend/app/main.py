@@ -153,651 +153,702 @@ async def health_check():
 async def ui_page():
     """Serve a minimal HTML user interface for testing the API."""
     return """
-    <!DOCTYPE html>
-    <html lang=\"en\">
-        <head>
-            <meta charset=\"utf-8\" />
-            <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
-            <title>KML Downloads UI</title>
-            <style>
-                :root {
-                    color-scheme: light dark;
-                }
-                * { box-sizing: border-box; }
-                body {
-                    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-                    margin: 0;
-                    background: #f9fafb;
-                    color: #111827;
-                }
-                main {
-                    max-width: 1100px;
-                    margin: 0 auto;
-                    padding: 2rem 1.5rem 3rem;
-                }
-                h1 {
-                    margin-bottom: 0.5rem;
-                    color: #0f172a;
-                }
-                h2 {
-                    color: #1f2937;
-                    margin-bottom: 0.75rem;
-                }
-                section {
-                    background: #ffffff;
-                    border-radius: 0.75rem;
-                    padding: 1.5rem;
-                    margin-bottom: 1.5rem;
-                    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
-                }
-                label {
-                    display: block;
-                    font-weight: 600;
-                    margin-bottom: 0.35rem;
-                }
-                select, input[type="text"] {
-                    width: 100%;
-                    padding: 0.6rem 0.75rem;
-                    border-radius: 0.5rem;
-                    border: 1px solid #d1d5db;
-                    font-size: 1rem;
-                }
-                select:focus, input[type="text"]:focus {
-                    outline: none;
-                    border-color: #2563eb;
-                    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
-                }
-                button {
-                    border: none;
-                    border-radius: 0.5rem;
-                    background: #2563eb;
-                    color: white;
-                    padding: 0.55rem 1rem;
-                    font-weight: 600;
-                    cursor: pointer;
-                    transition: background 0.2s ease;
-                }
-                button[disabled] {
-                    opacity: 0.6;
-                    cursor: not-allowed;
-                }
-                button.secondary {
-                    background: #64748b;
-                }
-                button:hover:not([disabled]) {
-                    background: #1d4ed8;
-                }
-                .form-grid {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-                    gap: 1rem;
-                    margin-bottom: 1rem;
-                }
-                .form-actions {
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 0.75rem;
-                    margin-top: 0.75rem;
-                }
-                table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    margin-top: 0.5rem;
-                }
-                th, td {
-                    text-align: left;
-                    padding: 0.75rem;
-                    border-bottom: 1px solid #e5e7eb;
-                }
-                th {
-                    background: #f1f5f9;
-                    font-size: 0.9rem;
-                    text-transform: uppercase;
-                    letter-spacing: 0.04em;
-                }
-                tbody tr:hover {
-                    background: #f8fafc;
-                }
-                .status {
-                    margin-top: 0.75rem;
-                    font-size: 0.95rem;
-                    color: #334155;
-                }
-                .status.error {
-                    color: #b91c1c;
-                }
-                .status.success {
-                    color: #047857;
-                }
-                .selection {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 0.75rem;
-                }
-                .selection-header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    flex-wrap: wrap;
-                    gap: 0.5rem;
-                }
-                .selection-list {
-                    list-style: none;
-                    padding: 0;
-                    margin: 0;
-                    border: 1px solid #e5e7eb;
-                    border-radius: 0.5rem;
-                    max-height: 200px;
-                    overflow-y: auto;
-                    background: #f8fafc;
-                }
-                .selection-list li {
-                    padding: 0.6rem 0.75rem;
-                    border-bottom: 1px solid #e2e8f0;
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    gap: 0.5rem;
-                }
-                .selection-list li:last-child {
-                    border-bottom: none;
-                }
-                .selection-list li.empty {
-                    justify-content: center;
-                    color: #64748b;
-                }
-                .selection-list button {
-                    background: #ef4444;
-                }
-                .summary-list {
-                    margin: 0.5rem 0 0;
-                    padding-left: 1.2rem;
-                }
-                pre {
-                    background: #0f172a;
-                    color: #f8fafc;
-                    padding: 1rem;
-                    border-radius: 0.5rem;
-                    overflow-x: auto;
-                    font-size: 0.85rem;
-                }
-                .links a {
-                    display: inline-block;
-                    margin-right: 1rem;
-                    font-weight: 600;
-                    color: #1d4ed8;
-                }
-                @media (prefers-color-scheme: dark) {
-                    body { background: #0f172a; color: #e2e8f0; }
-                    section { background: #111827; box-shadow: none; }
-                    th { background: #1e293b; }
-                    tbody tr:hover { background: #1e293b; }
-                    select, input[type="text"] {
-                        background: #1f2937;
-                        border-color: #374151;
-                        color: inherit;
-                    }
-                    .selection-list { background: #1e293b; border-color: #334155; }
-                    pre { background: #0b1120; }
-                }
-            </style>
-        </head>
-        <body>
-            <main>
-                <header>
-                    <h1>KML Downloads UI</h1>
-                    <p>Use this interface to smoke-test the parcel search, query, and export APIs.</p>
-                </header>
+<!DOCTYPE html>
+<html lang='en'>
+  <head>
+    <meta charset='utf-8' />
+    <meta name='viewport' content='width=device-width, initial-scale=1' />
+    <title>KML Backend Smoke Test</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      }
+      *, *::before, *::after {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #f8fafc;
+        color: #0f172a;
+        font-family: inherit;
+        line-height: 1.5;
+      }
+      .layout {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 2rem 1.5rem 3rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+      }
+      .panel {
+        background: #ffffff;
+        border-radius: 0.75rem;
+        padding: 1.5rem;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+      }
+      .header h1 {
+        margin: 0 0 0.25rem 0;
+        font-size: 1.75rem;
+      }
+      .header p {
+        margin: 0;
+        color: #475569;
+      }
+      label {
+        font-weight: 600;
+        display: block;
+        margin-bottom: 0.5rem;
+      }
+      select,
+      textarea,
+      input[type='text'],
+      input[type='color'] {
+        width: 100%;
+        padding: 0.65rem 0.75rem;
+        border-radius: 0.65rem;
+        border: 1px solid #d1d5db;
+        font-size: 1rem;
+        background: #ffffff;
+        color: inherit;
+      }
+      textarea {
+        min-height: 140px;
+        resize: vertical;
+        font-family: ui-monospace, SFMono-Regular, 'Segoe UI Mono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+      }
+      input[type='color'] {
+        padding: 0.2rem;
+        height: 2.5rem;
+      }
+      select:focus,
+      textarea:focus,
+      input[type='text']:focus,
+      input[type='color']:focus {
+        outline: none;
+        border-color: #2563eb;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 1rem;
+      }
+      .help-text {
+        margin-top: 0.35rem;
+        font-size: 0.9rem;
+        color: #64748b;
+      }
+      .color-field {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+      .color-field span {
+        font-size: 0.9rem;
+        color: #475569;
+      }
+      button {
+        border: none;
+        border-radius: 0.65rem;
+        background: #2563eb;
+        color: #ffffff;
+        padding: 0.75rem 1.25rem;
+        font-weight: 600;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: background 0.2s ease, transform 0.2s ease;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+      }
+      button:hover:not([disabled]) {
+        background: #1d4ed8;
+        transform: translateY(-1px);
+      }
+      button[disabled] {
+        cursor: not-allowed;
+        opacity: 0.65;
+        transform: none;
+      }
+      button[data-loading='true']::after {
+        content: "";
+        width: 1rem;
+        height: 1rem;
+        border: 2px solid rgba(255, 255, 255, 0.65);
+        border-top-color: transparent;
+        border-radius: 9999px;
+        animation: spin 0.8s linear infinite;
+      }
+      .status-panel h2 {
+        margin-top: 0;
+        margin-bottom: 0.75rem;
+        font-size: 1.1rem;
+      }
+      .status {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        border-radius: 0.65rem;
+        margin-bottom: 0.75rem;
+        background: #f1f5f9;
+        color: #1f2937;
+      }
+      .status:last-of-type {
+        margin-bottom: 0;
+      }
+      .status .label {
+        font-weight: 600;
+        width: 4.5rem;
+        flex-shrink: 0;
+      }
+      .status .message {
+        flex: 1 1 auto;
+      }
+      .status .spinner {
+        width: 0.9rem;
+        height: 0.9rem;
+        border: 2px solid currentColor;
+        border-top-color: transparent;
+        border-radius: 9999px;
+        animation: spin 0.8s linear infinite;
+      }
+      .status .spinner[hidden] {
+        display: none;
+      }
+      .status.muted {
+        background: #f8fafc;
+        color: #475569;
+      }
+      .status.info {
+        background: #dbeafe;
+        color: #1e3a8a;
+      }
+      .status.success {
+        background: #dcfce7;
+        color: #065f46;
+      }
+      .status.warning {
+        background: #fef3c7;
+        color: #92400e;
+      }
+      .status.error {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+      .summary-block {
+        margin-top: 1rem;
+        padding: 1rem;
+        border-radius: 0.65rem;
+        background: #f8fafc;
+      }
+      .summary-block.hidden {
+        display: none !important;
+      }
+      .summary-title {
+        margin: 0 0 0.5rem 0;
+        font-size: 1rem;
+      }
+      .summary-list {
+        margin: 0;
+        padding-left: 1.2rem;
+        font-size: 0.95rem;
+      }
+      .summary-list li {
+        margin-bottom: 0.35rem;
+      }
+      .muted-text {
+        color: #64748b;
+        margin: 0.35rem 0 0 0;
+        font-size: 0.9rem;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #0f172a;
+          color: #e2e8f0;
+        }
+        .panel {
+          background: #111827;
+          box-shadow: none;
+        }
+        select,
+        textarea,
+        input[type='text'],
+        input[type='color'] {
+          background: #0f172a;
+          border-color: #334155;
+          color: inherit;
+        }
+        .help-text,
+        .color-field span {
+          color: #94a3b8;
+        }
+        .status.muted {
+          background: #1e293b;
+          color: #cbd5f5;
+        }
+        .status.info {
+          background: rgba(37, 99, 235, 0.18);
+          color: #c7d2fe;
+        }
+        .status.success {
+          background: rgba(16, 185, 129, 0.18);
+          color: #bbf7d0;
+        }
+        .status.warning {
+          background: rgba(251, 191, 36, 0.2);
+          color: #fde68a;
+        }
+        .status.error {
+          background: rgba(248, 113, 113, 0.2);
+          color: #fecaca;
+        }
+        .summary-block {
+          background: #1e293b;
+        }
+        .muted-text {
+          color: #94a3b8;
+        }
+        button[data-loading='true']::after {
+          border-color: rgba(255, 255, 255, 0.5);
+          border-top-color: transparent;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class='layout'>
+      <header class='header'>
+        <h1>Backend KML smoke test</h1>
+        <p>Use this minimal form to run the parse → query → export workflow against the backend.</p>
+      </header>
+      <form id='parcel-form' class='panel' autocomplete='off'>
+        <div class='grid'>
+          <div class='field'>
+            <label for='state'>State</label>
+            <select id='state' name='state'>
+              <option value='NSW' selected>New South Wales (NSW)</option>
+              <option value='QLD'>Queensland (QLD)</option>
+            </select>
+          </div>
+          <div class='field'>
+            <label for='filename'>KML filename</label>
+            <input id='filename' type='text' inputmode='text' placeholder='parcels.kml' value='parcels.kml' />
+            <p class='help-text'>Illegal filename characters will be replaced automatically and a .kml extension will be enforced.</p>
+          </div>
+        </div>
+        <div class='grid' style='margin-top: 1rem;'>
+          <div class='field'>
+            <label for='folder'>Folder name (optional)</label>
+            <input id='folder' type='text' placeholder='Custom folder name' />
+          </div>
+        </div>
+        <div class='field' style='margin-top: 1rem;'>
+          <label for='identifiers'>Lot / plan identifiers</label>
+          <textarea id='identifiers' name='identifiers' placeholder='e.g. 1/DP123456
+2/DP654321' spellcheck='false'></textarea>
+          <p class='help-text'>Enter one identifier per line. Mixed casing and whitespace are handled automatically.</p>
+        </div>
+        <div class='grid' style='margin-top: 1rem;'>
+          <div class='field'>
+            <label for='fill-color'>Fill colour</label>
+            <div class='color-field'>
+              <input id='fill-color' type='color' value='#0ea5e9' />
+              <span>40% opacity will be applied automatically.</span>
+            </div>
+          </div>
+          <div class='field'>
+            <label for='stroke-color'>Boundary colour</label>
+            <div class='color-field'>
+              <input id='stroke-color' type='color' value='#0f172a' />
+              <span>3 px boundary with full opacity.</span>
+            </div>
+          </div>
+        </div>
+        <button id='download-button' type='submit'>Download KML</button>
+      </form>
+      <section class='panel status-panel'>
+        <h2>Status</h2>
+        <div class='status muted' data-status='parse' role='status' aria-live='polite'>
+          <span class='label'>Parse</span>
+          <span class='message'>Waiting for parcel identifiers.</span>
+          <span class='spinner' hidden></span>
+        </div>
+        <div class='status muted' data-status='query' role='status' aria-live='polite'>
+          <span class='label'>Query</span>
+          <span class='message'>Query runs after parsing succeeds.</span>
+          <span class='spinner' hidden></span>
+        </div>
+        <div class='status muted' data-status='export' role='status' aria-live='polite'>
+          <span class='label'>Export</span>
+          <span class='message'>Download becomes available once parcels load.</span>
+          <span class='spinner' hidden></span>
+        </div>
+        <div id='parsed-summary' class='summary-block'>
+          <p class='muted-text'>No parcels parsed yet.</p>
+        </div>
+        <div id='malformed-container' class='summary-block hidden'></div>
+      </section>
+    </main>
+    <script>
+      (function () {
+        'use strict';
 
-                <section aria-labelledby=\"search-heading\">
-                    <h2 id=\"search-heading\">Search parcels</h2>
-                    <p>Enter a state and search term (lot/plan, address, etc.) then run a search.</p>
-                    <form id=\"search-form\">
-                        <div class=\"form-grid\">
-                            <label>
-                                Parcel state
-                                <select id=\"search-state\" name=\"state\">
-                                    <option value=\"NSW\" selected>New South Wales (NSW)</option>
-                                    <option value=\"QLD\">Queensland (QLD)</option>
-                                    <option value=\"SA\">South Australia (SA)</option>
-                                </select>
-                            </label>
-                            <label>
-                                Search term
-                                <input id=\"search-term\" name=\"term\" type=\"text\" placeholder=\"e.g. 1/12345 or street name\" required />
-                            </label>
-                        </div>
-                        <div class=\"form-actions\">
-                            <button type=\"submit\" id=\"run-search\">Search</button>
-                            <button type=\"button\" id=\"reset-all\" class=\"secondary\">Reset</button>
-                        </div>
-                    </form>
-                    <div id=\"search-status\" class=\"status\">Ready to search.</div>
-                    <div class=\"table-wrapper\">
-                        <table aria-describedby=\"search-status\">
-                            <thead>
-                                <tr>
-                                    <th scope=\"col\">Action</th>
-                                    <th scope=\"col\">Parcel ID</th>
-                                    <th scope=\"col\">Label</th>
-                                    <th scope=\"col\">Address / Locality</th>
-                                </tr>
-                            </thead>
-                            <tbody id=\"results-body\">
-                                <tr>
-                                    <td colspan=\"4\">No results yet. Run a search to see parcels.</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
+        const form = document.getElementById('parcel-form');
+        const stateSelect = document.getElementById('state');
+        const identifiersField = document.getElementById('identifiers');
+        const folderField = document.getElementById('folder');
+        const filenameField = document.getElementById('filename');
+        const fillColorField = document.getElementById('fill-color');
+        const strokeColorField = document.getElementById('stroke-color');
+        const downloadButton = document.getElementById('download-button');
 
-                <section aria-labelledby=\"selection-heading\">
-                    <h2 id=\"selection-heading\">Selected parcels</h2>
-                    <div class=\"selection\">
-                        <div class=\"selection-header\">
-                            <p><strong id=\"selected-count\">0</strong> parcel(s) selected.</p>
-                            <div class=\"form-actions\">
-                                <button type=\"button\" id=\"clear-selection\" class=\"secondary\" disabled>Clear selection</button>
-                                <button type=\"button\" id=\"query-button\" disabled>Query selected parcels</button>
-                            </div>
-                        </div>
-                        <ul id=\"selected-list\" class=\"selection-list\">
-                            <li class=\"empty\">Nothing selected yet.</li>
-                        </ul>
-                        <div id=\"query-status\" class=\"status\"></div>
-                    </div>
-                </section>
+        const statusNodes = {
+        };
+        const parsedSummary = document.getElementById('parsed-summary');
+        const malformedContainer = document.getElementById('malformed-container');
 
-                <section id=\"query-results\" aria-labelledby=\"results-heading\" hidden>
-                    <h2 id=\"results-heading\">Query summary &amp; exports</h2>
-                    <div id=\"query-summary\"></div>
-                    <div class=\"form-actions\" style=\"margin-top: 1rem;\">
-                        <button type=\"button\" id=\"export-kml\" disabled>Download KML</button>
-                        <button type=\"button\" id=\"export-kmz\" disabled>Download KMZ</button>
-                    </div>
-                    <h3 style=\"margin-top: 1.5rem;\">Sample feature properties</h3>
-                    <pre id=\"query-metadata\">Run a query to inspect feature metadata here.</pre>
-                </section>
+        const statusNodes = {
+          parse: document.querySelector("[data-status='parse']"),
+          query: document.querySelector("[data-status='query']"),
+          export: document.querySelector("[data-status='export']")
+        };
+        const INITIAL_STATUSES = {
+          parse: 'Waiting for parcel identifiers.',
+          query: 'Query runs after parsing succeeds.',
+          export: 'Download becomes available once parcels load.'
+        };
 
-                <section class=\"links\">
-                    <h2>Documentation</h2>
-                    <a href=\"/docs\" target=\"_blank\">Interactive API docs</a>
-                    <a href=\"/redoc\" target=\"_blank\">OpenAPI schema</a>
-                </section>
-            </main>
+        let parsedParcels = [];
+        let featureCollection = null;
+        let readyToDownload = false;
+        let isBusy = false;
 
-            <script>
-                (function () {
-                    const searchForm = document.getElementById('search-form');
-                    const runSearchButton = document.getElementById('run-search');
-                    const resetAllButton = document.getElementById('reset-all');
-                    const stateField = document.getElementById('search-state');
-                    const termField = document.getElementById('search-term');
-                    const resultsBody = document.getElementById('results-body');
-                    const searchStatus = document.getElementById('search-status');
-                    const selectedList = document.getElementById('selected-list');
-                    const selectedCount = document.getElementById('selected-count');
-                    const clearSelectionButton = document.getElementById('clear-selection');
-                    const queryButton = document.getElementById('query-button');
-                    const queryStatus = document.getElementById('query-status');
-                    const querySection = document.getElementById('query-results');
-                    const querySummary = document.getElementById('query-summary');
-                    const metadataOutput = document.getElementById('query-metadata');
-                    const exportKmlButton = document.getElementById('export-kml');
-                    const exportKmzButton = document.getElementById('export-kmz');
+        init();
+        stateSelect.addEventListener('change', markDirty);
+        identifiersField.addEventListener('input', markDirty);
 
-                    let searchResults = [];
-                    const selectedParcels = new Map();
-                    let lastFeatureCollection = null;
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          if (isBusy) {
+            return;
+          }
 
-                    function setStatus(element, message, type = '') {
-                        element.textContent = message;
-                        element.className = type ? `status ${type}` : 'status';
-                    }
+          if (readyToDownload && featureCollection && Array.isArray(featureCollection.features) && featureCollection.features.length) {
+            await exportKML();
+          } else {
+            await runParseAndQuery();
+          }
+        });
 
-                    function renderSearchResults(results) {
-                        resultsBody.innerHTML = '';
-                        if (!results.length) {
-                            const row = document.createElement('tr');
-                            const cell = document.createElement('td');
-                            cell.colSpan = 4;
-                            cell.textContent = 'No parcels found for the last query.';
-                            row.appendChild(cell);
-                            resultsBody.appendChild(row);
-                            return;
-                        }
+        async function runParseAndQuery() {
+          const rawText = identifiersField.value.trim();
+          if (!rawText) {
+            updateStatus('parse', 'Please enter at least one lot/plan identifier.', 'error', false);
+            identifiersField.focus();
+            return;
+          }
 
-                        results.forEach((result) => {
-                            const row = document.createElement('tr');
+          readyToDownload = false;
+          featureCollection = null;
 
-                            const actionCell = document.createElement('td');
-                            const toggleButton = document.createElement('button');
-                            toggleButton.type = 'button';
-                            toggleButton.className = 'secondary';
-                            toggleButton.textContent = selectedParcels.has(result.id) ? 'Remove' : 'Select';
-                            toggleButton.addEventListener('click', () => {
-                                toggleSelection(result);
-                            });
-                            actionCell.appendChild(toggleButton);
+          isBusy = true;
+          setButtonState(true, true);
+          resetSummaries();
+          updateStatus('parse', 'Parsing identifiers...', 'info', true);
+          updateStatus('query', 'Waiting for parsing to finish...', 'muted', false);
+          updateStatus('export', INITIAL_STATUSES.export, 'muted', false);
 
-                            const idCell = document.createElement('td');
-                            idCell.textContent = result.id;
+          try {
+            const parseResponse = await fetch('/api/parse', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ state: stateSelect.value, rawText })
+            });
+            if (!parseResponse.ok) {
+              await handleResponseError('parse', parseResponse);
+              return;
+            }
 
-                            const labelCell = document.createElement('td');
-                            labelCell.textContent = result.label || '—';
+            const parseData = await parseResponse.json();
+            parsedParcels = Array.isArray(parseData.valid) ? parseData.valid : [];
+            renderParseSummary(parseData);
 
-                            const infoCell = document.createElement('td');
-                            infoCell.textContent = result.address || result.locality || '';
+            if (!parsedParcels.length) {
+              updateStatus('parse', 'No valid parcel identifiers were found. Check the validation messages below.', 'error', false);
+              return;
+            }
 
-                            row.appendChild(actionCell);
-                            row.appendChild(idCell);
-                            row.appendChild(labelCell);
-                            row.appendChild(infoCell);
+            const malformedCount = Array.isArray(parseData.malformed) ? parseData.malformed.length : 0;
+            const parseTone = malformedCount > 0 ? 'warning' : 'success';
+            updateStatus('parse', `Parsed ${parsedParcels.length} parcel${parsedParcels.length === 1 ? '' : 's'}.`, parseTone, false);
 
-                            resultsBody.appendChild(row);
-                        });
-                    }
+            updateStatus('query', 'Fetching parcel geometries...', 'info', true);
 
-                    function renderSelection() {
-                        selectedList.innerHTML = '';
-                        const ids = Array.from(selectedParcels.keys());
-                        if (!ids.length) {
-                            const empty = document.createElement('li');
-                            empty.className = 'empty';
-                            empty.textContent = 'Nothing selected yet.';
-                            selectedList.appendChild(empty);
-                        } else {
-                            ids.forEach((id) => {
-                                const result = selectedParcels.get(id);
-                                const item = document.createElement('li');
-                                const text = document.createElement('span');
-                                text.textContent = `${result.id} • ${result.label ?? ''}`.trim();
-                                const removeButton = document.createElement('button');
-                                removeButton.type = 'button';
-                                removeButton.textContent = 'Remove';
-                                removeButton.addEventListener('click', () => {
-                                    selectedParcels.delete(id);
-                                    renderSelection();
-                                    renderSearchResults(searchResults);
-                                    updateQueryButtonState();
-                                });
-                                item.appendChild(text);
-                                item.appendChild(removeButton);
-                                selectedList.appendChild(item);
-                            });
-                        }
+            const states = Array.from(new Set(parsedParcels.map((parcel) => parcel.state || stateSelect.value)));
+            const ids = parsedParcels.map((parcel) => parcel.id);
+            const queryResponse = await fetch('/api/query', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ states, ids })
+            });
+            if (!queryResponse.ok) {
+              await handleResponseError('query', queryResponse);
+              return;
+            }
 
-                        selectedCount.textContent = ids.length.toString();
-                        clearSelectionButton.disabled = ids.length === 0;
-                    }
+            const queryData = await queryResponse.json();
+            const features = Array.isArray(queryData.features) ? queryData.features : [];
+            featureCollection = Object.assign({ type: queryData.type || 'FeatureCollection' }, queryData, { features });
 
-                    function toggleSelection(result) {
-                        if (selectedParcels.has(result.id)) {
-                            selectedParcels.delete(result.id);
-                        } else {
-                            selectedParcels.set(result.id, result);
-                        }
-                        renderSelection();
-                        renderSearchResults(searchResults);
-                        updateQueryButtonState();
-                    }
+            if (!features.length) {
+              updateStatus('query', 'Query completed but no parcel features were returned.', 'warning', false);
+              updateStatus('export', 'No parcel features available to export.', 'error', false);
+              readyToDownload = false;
+              return;
+            }
 
-                    function updateQueryButtonState() {
-                        queryButton.disabled = selectedParcels.size === 0;
-                        if (!queryButton.dataset.defaultText) {
-                            queryButton.dataset.defaultText = queryButton.textContent;
-                        }
-                        queryButton.textContent = queryButton.dataset.defaultText;
-                    }
+            updateStatus('query', `Loaded ${features.length} parcel feature${features.length === 1 ? '' : 's'}.`, 'success', false);
+            updateStatus('export', 'Parcels ready. Click "Download KML" to export.', 'success', false);
+            readyToDownload = true;
+          } catch (error) {
+            console.error('Parse/query workflow failed:', error);
+            if (!error || !error.handled) {
+              updateStatus('export', error && error.message ? error.message : 'Unexpected error during parse/query.', 'error', false);
+            }
+          } finally {
+            isBusy = false;
+            setButtonState(false, false);
+          }
+        }
+        async function exportKML() {
+          if (!featureCollection || !Array.isArray(featureCollection.features) || !featureCollection.features.length) {
+            updateStatus('export', 'No parcel features to export. Run parse and query first.', 'error', false);
+            readyToDownload = false;
+            return;
+          }
 
-                    function getSelectedStates() {
-                        const fallbackState = stateField.value.trim().toUpperCase();
-                        if (selectedParcels.size === 0) {
-                            return [fallbackState];
-                        }
+          isBusy = true;
+          setButtonState(true, true);
+          updateStatus('export', 'Requesting KML export...', 'info', true);
 
-                        const states = new Set();
-                        selectedParcels.forEach((item) => {
-                            const candidate =
-                                typeof item.state === 'string' && item.state.trim()
-                                    ? item.state.trim().toUpperCase()
-                                    : fallbackState;
-                            states.add(candidate);
-                        });
+          try {
+            const desiredFilename = sanitizeFilename(filenameField.value);
+            const folderName = folderField.value.trim();
+            const payload = {
+              features: featureCollection.features,
+              filename: desiredFilename,
+              styleOptions: {
+                fillOpacity: 0.4,
+                strokeWidth: 3,
+                strokeOpacity: 1,
+                colorByState: false,
+                fillColor: fillColorField.value,
+                strokeColor: strokeColorField.value,
+                folderName: folderName || undefined
+              }
+            };
+            const exportResponse = await fetch('/api/kml', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
 
-                        if (!states.size) {
-                            states.add(fallbackState);
-                        }
+            if (!exportResponse.ok) {
+              await handleResponseError('export', exportResponse);
+              return;
+            }
 
-                        return Array.from(states);
-                    }
+            const blob = await exportResponse.blob();
+            const filename = extractFilename(exportResponse.headers.get('content-disposition')) || desiredFilename;
+            triggerDownload(blob, filename);
+            updateStatus('export', `KML download started: ${filename}`, 'success', false);
+          } catch (error) {
+            console.error('KML export failed:', error);
+            if (!error || !error.handled) {
+              updateStatus('export', error && error.message ? error.message : 'Unexpected error during export.', 'error', false);
+            }
+          } finally {
+            isBusy = false;
+            setButtonState(false, false);
+          }
+        }
+        function init() {
+          resetSummaries();
+          updateStatus('parse', INITIAL_STATUSES.parse, 'muted', false);
+          updateStatus('query', INITIAL_STATUSES.query, 'muted', false);
+          updateStatus('export', INITIAL_STATUSES.export, 'muted', false);
+        }
 
-                    async function runSearch() {
-                        const state = stateField.value.trim().toUpperCase();
-                        const term = termField.value.trim();
-                        if (!term) {
-                            setStatus(searchStatus, 'Enter a search term to continue.', 'error');
-                            return;
-                        }
+        function markDirty() {
+          readyToDownload = false;
+          featureCollection = null;
+          if (parsedParcels.length) {
+            updateStatus('parse', 'Input updated. Submit again to refresh parsed parcels.', 'info', false);
+          } else {
+            updateStatus('parse', INITIAL_STATUSES.parse, 'muted', false);
+          }
+          updateStatus('query', INITIAL_STATUSES.query, 'muted', false);
+          updateStatus('export', INITIAL_STATUSES.export, 'muted', false);
+          resetSummaries();
+        }
 
-                        setStatus(searchStatus, 'Searching parcels…');
-                        runSearchButton.disabled = true;
-                        renderSearchResults([]);
+        function resetSummaries() {
+          parsedParcels = [];
+          parsedSummary.innerHTML = "<p class='muted-text'>No parcels parsed yet.</p>";
+          malformedContainer.innerHTML = '';
+          malformedContainer.classList.add('hidden');
+        }
 
-                        try {
-                            const response = await fetch('/api/search', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ state, term, page: 1, pageSize: 10 })
-                            });
+        function renderParseSummary(data) {
+          parsedSummary.innerHTML = '';
+          const valid = Array.isArray(data && data.valid) ? data.valid : [];
+          const malformed = Array.isArray(data && data.malformed) ? data.malformed : [];
 
-                            if (!response.ok) {
-                                const message = await response.text();
-                                throw new Error(message || `Search failed with status ${response.status}`);
-                            }
+          if (valid.length) {
+            const heading = document.createElement('h3');
+            heading.className = 'summary-title';
+            heading.textContent = `Parsed IDs (${valid.length})`;
+            parsedSummary.appendChild(heading);
+            const list = document.createElement('ol');
+            list.className = 'summary-list';
+            valid.slice(0, 10).forEach((parcel) => {
+              const item = document.createElement('li');
+              item.textContent = parcel.id;
+              list.appendChild(item);
+            });
+            parsedSummary.appendChild(list);
 
-                            const data = await response.json();
-                            searchResults = Array.isArray(data) ? data : [];
-                            renderSearchResults(searchResults);
-                            if (searchResults.length) {
-                                setStatus(searchStatus, `Found ${searchResults.length} result(s). Select parcels to query.`, 'success');
-                            } else {
-                                setStatus(searchStatus, 'No parcels matched that search.', 'error');
-                            }
-                        } catch (error) {
-                            console.error(error);
-                            renderSearchResults([]);
-                            setStatus(searchStatus, `Search failed: ${error.message}`, 'error');
-                        } finally {
-                            runSearchButton.disabled = false;
-                        }
-                    }
+            if (valid.length > 10) {
+              const note = document.createElement('p');
+              note.className = 'muted-text';
+              note.textContent = `+${valid.length - 10} more parcel${valid.length - 10 === 1 ? '' : 's'} not shown.`;
+              parsedSummary.appendChild(note);
+            }
+          } else {
+            const empty = document.createElement('p');
+            empty.className = 'muted-text';
+            empty.textContent = 'No valid parcel identifiers parsed.';
+            parsedSummary.appendChild(empty);
+          }
 
-                    function summariseFeatureCollection(collection) {
-                        const features = Array.isArray(collection?.features) ? collection.features : [];
-                        const total = features.length;
-                        const byState = new Map();
-                        let areaCount = 0;
-                        let areaSum = 0;
+          malformedContainer.innerHTML = '';
+          if (malformed.length) {
+            malformedContainer.classList.remove('hidden');
+            const heading = document.createElement('h3');
+            heading.className = 'summary-title';
+            heading.textContent = `Malformed entries (${malformed.length})`;
+            malformedContainer.appendChild(heading);
+            const list = document.createElement('ul');
+            list.className = 'summary-list';
+            malformed.slice(0, 8).forEach((entry) => {
+              const item = document.createElement('li');
+              const raw = entry && entry.raw ? entry.raw : '(empty line)';
+              const detail = entry && entry.error ? entry.error : 'Unknown error';
+              item.innerHTML = `<strong>${escapeHtml(raw)}</strong><br /><span class='muted-text'>${escapeHtml(detail)}</span>`;
+              list.appendChild(item);
+            });
+            malformedContainer.appendChild(list);
 
-                        features.forEach((feature) => {
-                            const state = feature?.properties?.state || 'Unknown';
-                            byState.set(state, (byState.get(state) || 0) + 1);
-                            const area = feature?.properties?.area_ha;
-                            if (typeof area === 'number') {
-                                areaCount += 1;
-                                areaSum += area;
-                            }
-                        });
+            if (malformed.length > 8) {
+              const note = document.createElement('p');
+              note.className = 'muted-text';
+              note.textContent = `+${malformed.length - 8} additional issue${malformed.length - 8 === 1 ? '' : 's'} not shown.`;
+              malformedContainer.appendChild(note);
+            }
+          } else {
+            malformedContainer.classList.add('hidden');
+          }
+        }
 
-                        let summaryHtml = `<p><strong>${total}</strong> feature(s) loaded.</p>`;
-                        if (byState.size) {
-                            summaryHtml += '<p>Distribution by state:</p><ul class="summary-list">';
-                            byState.forEach((count, state) => {
-                                summaryHtml += `<li>${state}: ${count}</li>`;
-                            });
-                            summaryHtml += '</ul>';
-                        }
-                        if (areaCount) {
-                            summaryHtml += `<p>Total mapped area: ${areaSum.toFixed(2)} ha across ${areaCount} feature(s).</p>`;
-                        }
-                        if (!total) {
-                            summaryHtml += '<p>No features were returned for the selected parcels.</p>';
-                        }
+        function escapeHtml(value) {
+          return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+        }
 
-                        querySummary.innerHTML = summaryHtml;
-                        if (total) {
-                            const sample = features.slice(0, 3).map((feature) => feature.properties);
-                            metadataOutput.textContent = JSON.stringify(sample, null, 2);
-                        } else {
-                            metadataOutput.textContent = 'Run a query to inspect feature metadata here.';
-                        }
-                    }
+        async function handleResponseError(stage, response) {
+          let message = response.statusText || 'Request failed';
+          try {
+            const data = await response.json();
+            if (data && (data.detail || data.error)) {
+              message = data.detail || data.error;
+            }
+          } catch (error) {
+            // ignore JSON parse errors
+          }
+          const err = new Error(message);
+          err.handled = true;
+          updateStatus(stage, `Error (${response.status}): ${message}`, 'error', false);
+          throw err;
+        }
 
-                    async function runQuery() {
-                        if (selectedParcels.size === 0) {
-                            return;
-                        }
+        function setButtonState(disabled, loading) {
+          downloadButton.disabled = disabled;
+          downloadButton.setAttribute('aria-busy', loading ? 'true' : 'false');
+          if (loading) {
+            downloadButton.setAttribute('data-loading', 'true');
+          } else {
+            downloadButton.removeAttribute('data-loading');
+          }
+        }
 
-                        queryButton.disabled = true;
-                        if (!queryButton.dataset.defaultText) {
-                            queryButton.dataset.defaultText = queryButton.textContent;
-                        }
-                        queryButton.textContent = 'Loading…';
-                        setStatus(queryStatus, 'Querying selected parcels…');
-                        exportKmlButton.disabled = true;
-                        exportKmzButton.disabled = true;
+        function sanitizeFilename(value) {
+          const fallback = 'parcels.kml';
+          const trimmed = (value || '').trim();
+          if (!trimmed) {
+            return fallback;
+          }
+          const cleaned = trimmed.replace(/[\\/:*?"<>|]+/g, '-');
+          const normalised = cleaned.replace(/\s+/g, '-').replace(/-+/g, '-');
+          if (!normalised) {
+            return fallback;
+          }
+          return /\.kml$/i.test(normalised) ? normalised : `${normalised}.kml`;
+        }
 
-                        const ids = Array.from(selectedParcels.keys());
-                        const states = getSelectedStates();
-                        const payload = { states, ids };
-
-                        try {
-                            const response = await fetch('/api/query', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(payload)
-                            });
-
-                            if (!response.ok) {
-                                const message = await response.text();
-                                throw new Error(message || `Query failed with status ${response.status}`);
-                            }
-
-                            const data = await response.json();
-                            lastFeatureCollection = data;
-                            summariseFeatureCollection(data);
-                            querySection.hidden = false;
-                            setStatus(queryStatus, `Query returned ${data.features?.length ?? 0} feature(s).`, 'success');
-                            exportKmlButton.disabled = false;
-                            exportKmzButton.disabled = false;
-                        } catch (error) {
-                            console.error(error);
-                            setStatus(queryStatus, `Query failed: ${error.message}`, 'error');
-                            lastFeatureCollection = null;
-                        } finally {
-                            updateQueryButtonState();
-                        }
-                    }
-
-                    async function exportFeatures(format) {
-                        if (!lastFeatureCollection || !Array.isArray(lastFeatureCollection.features)) {
-                            setStatus(queryStatus, 'Nothing to export yet. Run a query first.', 'error');
-                            return;
-                        }
-
-                        const button = format === 'kml' ? exportKmlButton : exportKmzButton;
-                        const defaultText = button.dataset.defaultText || button.textContent;
-                        button.dataset.defaultText = defaultText;
-                        button.textContent = 'Preparing download…';
-                        button.disabled = true;
-
-                        try {
-                            const response = await fetch(`/api/${format}`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ features: lastFeatureCollection.features })
-                            });
-
-                            if (!response.ok) {
-                                const message = await response.text();
-                                throw new Error(message || `Export failed with status ${response.status}`);
-                            }
-
-                            const blob = await response.blob();
-                            const extension = format === 'kml' ? 'kml' : 'kmz';
-                            const url = URL.createObjectURL(blob);
-                            const anchor = document.createElement('a');
-                            anchor.href = url;
-                            anchor.download = `parcels-${new Date().toISOString().slice(0, 10)}.${extension}`;
-                            document.body.appendChild(anchor);
-                            anchor.click();
-                            anchor.remove();
-                            URL.revokeObjectURL(url);
-                            setStatus(queryStatus, `Download ready: ${extension.toUpperCase()} file generated.`, 'success');
-                        } catch (error) {
-                            console.error(error);
-                            setStatus(queryStatus, `Export failed: ${error.message}`, 'error');
-                        } finally {
-                            button.textContent = button.dataset.defaultText;
-                            button.disabled = false;
-                        }
-                    }
-
-                    function resetUi() {
-                        searchResults = [];
-                        selectedParcels.clear();
-                        termField.value = '';
-                        renderSearchResults([]);
-                        renderSelection();
-                        updateQueryButtonState();
-                        querySection.hidden = true;
-                        lastFeatureCollection = null;
-                        metadataOutput.textContent = 'Run a query to inspect feature metadata here.';
-                        querySummary.innerHTML = '';
-                        setStatus(searchStatus, 'Ready to search.');
-                        setStatus(queryStatus, '');
-                        exportKmlButton.disabled = true;
-                        exportKmzButton.disabled = true;
-                    }
-
-                    searchForm.addEventListener('submit', (event) => {
-                        event.preventDefault();
-                        runSearch();
-                    });
-
-                    resetAllButton.addEventListener('click', () => {
-                        resetUi();
-                    });
-
-                    clearSelectionButton.addEventListener('click', () => {
-                        selectedParcels.clear();
-                        renderSelection();
-                        renderSearchResults(searchResults);
-                        updateQueryButtonState();
-                        setStatus(queryStatus, 'Selection cleared.');
-                    });
-
-                    queryButton.addEventListener('click', () => {
-                        runQuery();
-                    });
-
-                    exportKmlButton.addEventListener('click', () => {
-                        exportFeatures('kml');
-                    });
-
-                    exportKmzButton.addEventListener('click', () => {
-                        exportFeatures('kmz');
-                    });
-
-                    renderSearchResults([]);
-                    renderSelection();
-                    setStatus(queryStatus, '');
-                })();
-            </script>
-        </body>
-    </html>
+        function extractFilename(disposition) {
+          if (!disposition) {
+            return '';
+          }
+          const utf8 = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+          if (utf8 && utf8[1]) {
+            try {
+              return decodeURIComponent(utf8[1]);
+            } catch (error) {
+              return utf8[1];
+            }
+          }
+          const ascii = disposition.match(/filename="?([^";]+)"?/i);
+          return ascii ? ascii[1] : '';
+        }
+        function triggerDownload(blob, filename) {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = filename || 'download.kml';
+          document.body.appendChild(link);
+          link.click();
+          requestAnimationFrame(() => {
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>
     """
 
 @app.post("/api/parse", response_model=ParseResponse)
