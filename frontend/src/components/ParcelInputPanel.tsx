@@ -9,7 +9,6 @@ import { Badge } from '@/components/ui/badge';
 import { Database, AlertTriangle, CheckCircle } from '@phosphor-icons/react';
 import { useParcelInput } from '../hooks/useParcelInput';
 import type { ParcelState } from '../lib/types';
-import { NswParcelSearch } from './NswParcelSearch';
 
 interface ParcelInputPanelProps {
   onQueryParcels: (parcelIds: string[], states: ParcelState[]) => void;
@@ -21,8 +20,7 @@ export function ParcelInputPanel({ onQueryParcels, isQuerying }: ParcelInputPane
     inputState,
     updateRawInput,
     updateSelectedState,
-    clearInput,
-    appendParcelIdentifier
+    clearInput
   } = useParcelInput();
   const [hasAttemptedQuery, setHasAttemptedQuery] = useState(false);
 
@@ -47,10 +45,10 @@ LOT 13 DP1242624
 Lot 1 RP912949
 Lot 1 on RP 912949
 13SP12345`,
-    SA: `101//D12345
-102//F23456
-1/234//CT5678
-15//DP789012`
+    SA: `CT6204/831
+D117877 A22
+A22 D117877
+Lot A1 D12345`
   };
 
   return (
@@ -77,7 +75,7 @@ Lot 1 on RP 912949
               <TabsTrigger value="SA">SA</TabsTrigger>
             </TabsList>
             
-            <TabsContent value="NSW" className="space-y-4 mt-4">
+            <TabsContent value="NSW" className="space-y-3 mt-4">
               <div className="text-sm text-muted-foreground">
                 <p className="font-medium mb-2">NSW Format Examples:</p>
                 <div className="bg-muted p-2 rounded text-xs font-mono">
@@ -86,13 +84,9 @@ Lot 1 on RP 912949
                 <p className="mt-2 text-xs">
                   Supports: LOT//PLAN, LOT/SECTION//PLAN (letters allowed), ranges (1-3//DP123),
                   and "LOT 13 DP1242624" style inputs. Lowercase entries are normalised automatically.
+                  Use the parcel identifiers field below for manual entry or pasted results.
                 </p>
               </div>
-
-              <NswParcelSearch
-                onParcelSelect={appendParcelIdentifier}
-                disabled={isQuerying}
-              />
             </TabsContent>
             
             <TabsContent value="QLD" className="space-y-3 mt-4">
@@ -116,7 +110,8 @@ Lot 1 on RP 912949
                   {exampleTexts.SA}
                 </div>
                 <p className="mt-2 text-xs">
-                  Supports: PARCEL//PLAN and VOLUME/FOLIO//PLAN formats
+                  Supports: title references (e.g. CT6204/831) and plan parcels in any order
+                  (e.g. D117877 A22 or A22 D117877). Separate multiple entries with new lines or commas.
                 </p>
               </div>
             </TabsContent>

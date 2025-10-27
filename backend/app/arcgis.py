@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential, before_sleep_log
 from .models import ParcelState, Feature, SearchResult
@@ -12,11 +12,14 @@ logger = get_logger(__name__)
 
 MAX_SEARCH_PAGE_SIZE = 50
 
+_SA_TITLE_REF_PATTERN = re.compile(r"^[A-Z]{1,3}\d{1,6}/\d{1,6}$")
+_SA_PLAN_PARCEL_PATTERN = re.compile(r"^[A-Z]+\d+[A-Z0-9]*\s+[A-Z0-9]+$")
+
 # ArcGIS service endpoints
 ARCGIS_SERVICES = {
     ParcelState.NSW: "https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Cadastre/MapServer/9",
     ParcelState.QLD: "https://spatial-gis.information.qld.gov.au/arcgis/rest/services/PlanningCadastre/LandParcelPropertyFramework/MapServer/4", 
-    ParcelState.SA: "https://lsa2.geohub.sa.gov.au/server/rest/services/ePlanning/DAP_Parcels/MapServer/1"
+    ParcelState.SA: "https://lsa2.geohub.sa.gov.au/server/rest/services/SAPPA/PropertyPlanningAtlasV17/MapServer/269"
 }
 
 # Field mappings for different states
@@ -44,12 +47,13 @@ STATE_FIELD_MAPPINGS = {
     },
     ParcelState.SA: {
         'id_field': 'parcel_id',
-        'name_field': 'legal_desc',
-        'lot_field': 'lot_number',
-        'plan_field': 'plan_number',
-        'search_fields': ['legal_desc', 'lot_number', 'plan_number'],
-        'like_fields': ['legal_desc', 'lot_number', 'plan_number'],
-        'extra_fields': ['locality']
+        'name_field': 'parcel_id',
+        'title_field': 'title_ref',
+        'lot_field': None,
+        'plan_field': 'parcel_id',
+        'search_fields': ['parcel_id', 'title_ref'],
+        'like_fields': ['parcel_id', 'title_ref'],
+        'extra_fields': ['title_ref']
     }
 }
 
@@ -246,6 +250,9 @@ class ArcGISClient:
         """Query features from ArcGIS service for given parcel IDs."""
         service_url = ARCGIS_SERVICES[state]
         field_mapping = STATE_FIELD_MAPPINGS[state]
+
+        if state == ParcelState.SA:
+            return await self._query_sa_features(parcel_ids, bbox, service_url, field_mapping)
         
         all_features = []
         
@@ -323,6 +330,81 @@ class ArcGISClient:
         logger.info(f"Total retrieved: {len(all_features)} features for {state}")
         return all_features
 
+    async def _query_sa_features(
+        self,
+        parcel_ids: List[str],
+        bbox: Optional[List[float]],
+        service_url: str,
+        field_mapping: Dict[str, str]
+    ) -> List[Dict[str, Any]]:
+        plan_parcels: List[str] = []
+        title_refs: List[str] = []
+
+        for raw_id in parcel_ids:
+            if not raw_id:
+                continue
+            normalized = " ".join(str(raw_id).upper().split())
+            if _SA_TITLE_REF_PATTERN.fullmatch(normalized.replace(" ", "")):
+                title_refs.append(normalized.replace(" ", ""))
+            elif _SA_PLAN_PARCEL_PATTERN.fullmatch(normalized):
+                plan_parcels.append(normalized)
+            else:
+                logger.warning("Unrecognised SA identifier format '%s'; defaulting to parcel_id query", raw_id)
+                plan_parcels.append(normalized)
+
+        queries: List[Tuple[str, List[str]]] = []
+
+        if plan_parcels:
+            queries.append((field_mapping['id_field'], sorted(set(plan_parcels))))
+
+        title_field = field_mapping.get('title_field', 'title_ref')
+        if title_refs and title_field:
+            queries.append((title_field, sorted(set(title_refs))))
+
+        dedup: Dict[str, Dict[str, Any]] = {}
+
+        for field_name, values in queries:
+            for i in range(0, len(values), self.max_ids_per_chunk):
+                chunk = values[i:i + self.max_ids_per_chunk]
+                escaped_values = [v.replace("'", "''") for v in chunk]
+                where_clause = f"UPPER({field_name}) IN ({','.join(f"'{val}'" for val in escaped_values)})"
+
+                params = {
+                    'where': where_clause,
+                    'outFields': '*',
+                    'returnGeometry': 'true',
+                    'geometryPrecision': 6,
+                    'f': 'geojson',
+                    'outSR': '4326'
+                }
+
+                if bbox:
+                    params.update({
+                        'geometry': f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}",
+                        'geometryType': 'esriGeometryEnvelope',
+                        'spatialRel': 'esriSpatialRelIntersects'
+                    })
+
+                url = f"{service_url}/query"
+
+                try:
+                    response = await self.session.get(url, params=params)
+                    response.raise_for_status()
+                    data = response.json()
+
+                    features = data.get('features', []) if 'features' in data else []
+                    for feature in features:
+                        processed = self._process_feature(feature, ParcelState.SA, field_mapping)
+                        if processed:
+                            key = str(processed['properties'].get('id', processed['properties'].get(field_mapping['id_field'], len(dedup))))
+                            dedup[key] = processed
+
+                except Exception as exc:
+                    logger.error("Failed to query SA parcels for field %s chunk %s: %s", field_name, i, exc)
+
+        logger.info("Total retrieved: %d features for SA", len(dedup))
+        return list(dedup.values())
+
     def _process_feature(
         self,
         feature: Dict[str, Any],
@@ -371,7 +453,29 @@ class ArcGISClient:
                         feature_id,
                         exc,
                     )
-            
+            elif state == ParcelState.SA:
+                parcel_id_value = properties.get('parcel_id') or feature_id
+                title_ref_value = properties.get('title_ref')
+
+                canonical = None
+                if isinstance(parcel_id_value, str) and parcel_id_value.strip():
+                    canonical = " ".join(parcel_id_value.upper().split())
+                    properties['parcel_id'] = canonical
+                    parts = canonical.split()
+                    if len(parts) >= 2:
+                        properties.setdefault('plan', parts[0])
+                        properties.setdefault('lot', parts[1])
+                if isinstance(title_ref_value, str) and title_ref_value.strip():
+                    normalised_title = title_ref_value.upper().replace(" ", "")
+                    properties['title_ref'] = normalised_title
+                    properties.setdefault('display_title', normalised_title)
+                    if not canonical:
+                        canonical = normalised_title
+
+                if canonical:
+                    feature_id = canonical
+                    name = canonical
+
             # Calculate area in hectares if geometry is available
             area_ha = None
             if geometry and geometry.get('type') in ['Polygon', 'MultiPolygon']:

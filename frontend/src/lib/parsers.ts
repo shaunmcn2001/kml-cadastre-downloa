@@ -283,53 +283,107 @@ export function parseQLD(rawText: string): {
   return { valid, malformed };
 }
 
-// SA Parser - handles PARCEL//PLAN format with optional VOLUME/FOLIO
+const SA_TITLE_REF_PATTERN = /^[A-Z]{1,3}\d{1,6}\/\d{1,6}$/;
+const SA_PLAN_PATTERN = /^[A-Z]+\d+[A-Z0-9]*$/;
+const SA_LOT_PATTERN = /^[A-Z0-9]+$/;
+
+function normaliseSATitleRef(raw: string) {
+  const cleaned = raw.toUpperCase().replace(/\s+/g, '').trim();
+  if (!SA_TITLE_REF_PATTERN.test(cleaned)) {
+    throw new Error("Invalid SA title reference. Expected format like CT6204/831");
+  }
+  const [volume, folio] = cleaned.split('/');
+  return { id: cleaned, volume, folio };
+}
+
+function normaliseSAPlanParcel(raw: string) {
+  let cleaned = raw.toUpperCase().replace(/\//g, ' ');
+  cleaned = cleaned.replace(/[,;]+/g, ' ');
+  cleaned = cleaned.replace(/\b(LOT|PLAN|PARCEL)\b/g, ' ');
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+
+  if (!cleaned) {
+    throw new Error('Invalid SA plan parcel. Expected plan and lot values');
+  }
+
+  const parts = cleaned.split(' ');
+  if (parts.length < 2) {
+    throw new Error('Invalid SA plan parcel. Expected plan and lot values');
+  }
+
+  const isPlan = (token: string) => SA_PLAN_PATTERN.test(token ?? '');
+  const isLot = (token: string) => SA_LOT_PATTERN.test(token ?? '');
+
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+
+  let plan: string | undefined;
+  let lot: string | undefined;
+
+  if (isPlan(first) && isLot(last)) {
+    plan = first;
+    lot = last;
+  } else if (isPlan(last) && isLot(first)) {
+    plan = last;
+    lot = first;
+  } else {
+    const joinedFront = parts.slice(0, -1).join('');
+    if (isPlan(joinedFront) && isLot(last)) {
+      plan = joinedFront;
+      lot = last;
+    } else {
+      const joinedBack = parts.slice(1).join('');
+      if (isPlan(joinedBack) && isLot(first)) {
+        plan = joinedBack;
+        lot = first;
+      }
+    }
+  }
+
+  if (!plan || !lot) {
+    throw new Error("Invalid SA plan parcel. Expected format like 'D117877 A22'");
+  }
+
+  return { id: `${plan} ${lot}`, plan, lot };
+}
+
+// SA Parser - supports title references and plan parcel identifiers
 export function parseSA(rawText: string): {
   valid: ParsedParcel[];
   malformed: Array<{ raw: string; error: string }>;
 } {
   const valid: ParsedParcel[] = [];
   const malformed: Array<{ raw: string; error: string }> = [];
-  
-  const lines = rawText.split('\n').map(line => line.trim()).filter(Boolean);
-  
+
+  const lines = rawText.split('\n').map((line) => line.trim()).filter(Boolean);
+
   for (const line of lines) {
     try {
-      // Handle PARCEL//PLAN format
-      const saMatch = line.match(/^([^\/]+)\/\/(.+)$/);
-      if (saMatch) {
-        const [, parcel, plan] = saMatch;
-        
-        // Check for VOLUME/FOLIO in parcel part
-        const volumeFolioMatch = parcel.match(/^(\d+)\/(\d+)$/);
-        if (volumeFolioMatch) {
-          const [, volume, folio] = volumeFolioMatch;
-          valid.push({
-            id: line,
-            state: 'SA',
-            raw: line,
-            volume,
-            folio,
-            plan: plan.trim()
-          });
-        } else {
-          valid.push({
-            id: line,
-            state: 'SA',
-            raw: line,
-            lot: parcel.trim(),
-            plan: plan.trim()
-          });
-        }
+      try {
+        const { id, volume, folio } = normaliseSATitleRef(line);
+        valid.push({
+          id,
+          state: 'SA',
+          raw: line,
+          volume,
+          folio,
+        });
         continue;
+      } catch (err) {
+        const { id, plan, lot } = normaliseSAPlanParcel(line);
+        valid.push({
+          id,
+          state: 'SA',
+          raw: line,
+          plan,
+          lot,
+        });
       }
-      
-      malformed.push({ raw: line, error: 'Invalid SA format. Expected PARCEL//PLAN or VOLUME/FOLIO//PLAN' });
     } catch (error) {
-      malformed.push({ raw: line, error: `Parse error: ${error}` });
+      malformed.push({ raw: line, error: error instanceof Error ? error.message : String(error) });
     }
   }
-  
+
   return { valid, malformed };
 }
 

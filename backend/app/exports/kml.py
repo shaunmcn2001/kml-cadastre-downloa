@@ -273,23 +273,10 @@ def _add_features_to_container(container, features: List[Feature], style):
         placemark.name = desired_name        # override any upstream props.name
         placemark.snippet.maxlines = 0       # hide grey line in Places panel
         placemark.snippet.content = ""
-
-        # Popup: ID + Area only
-        desc_parts = [f"<b>ID:</b> {props.id}<br/>"]
-        if getattr(props, "area_ha", None) is not None:
-            try:
-                desc_parts.append(f"<b>Area:</b> {float(props.area_ha):.2f} hectares<br/>")
-            except Exception:
-                desc_parts.append(f"<b>Area:</b> {props.area_ha} hectares<br/>")
-        placemark.description = "<![CDATA[" + "".join(desc_parts) + "]]>"
+        placemark.description = ""
 
         # Apply style
         placemark.style = style
-
-        # Keep ExtendedData (doesn't show in sidebar)
-        for key, value in props.__dict__.items():
-            if value is not None:
-                placemark.extendeddata.newdata(name=key, value=str(value))
 
     for feature in features:
         try:
