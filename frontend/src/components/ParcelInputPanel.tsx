@@ -40,7 +40,8 @@ export function ParcelInputPanel({ onQueryParcels, isQuerying }: ParcelInputPane
 2//DP131118
 LOT 13 DP1242624
 1-3//DP555123
-101/1//DP12345`,
+10/4/DP203489
+8/A/DP30493`,
     QLD: `1RP912949
 1 RP 912949
 Lot 1 RP912949
@@ -83,7 +84,8 @@ Lot 1 on RP 912949
                   {exampleTexts.NSW}
                 </div>
                 <p className="mt-2 text-xs">
-                  Supports: LOT//PLAN, LOT/SECTION//PLAN, ranges (1-3//DP123), and "LOT 13 DP1242624" format
+                  Supports: LOT//PLAN, LOT/SECTION//PLAN (letters allowed), ranges (1-3//DP123),
+                  and "LOT 13 DP1242624" style inputs. Lowercase entries are normalised automatically.
                 </p>
               </div>
 

@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential, before_sleep_log
 from .models import ParcelState, Feature, SearchResult
+from .parsers.nsw import normalize_nsw_identifier
 from .utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -339,6 +340,37 @@ class ArcGISClient:
             # Extract standard fields
             feature_id = properties.get(field_mapping['id_field'], 'unknown')
             name = properties.get(field_mapping['name_field'], f"{state} Parcel {feature_id}")
+
+            if state == ParcelState.NSW and isinstance(feature_id, str):
+                try:
+                    canonical, lot, section, plan = normalize_nsw_identifier(feature_id)
+                    feature_id = canonical
+                    name = canonical
+
+                    properties[field_mapping['id_field']] = canonical
+                    properties['lotplan'] = canonical
+
+                    lot_field = field_mapping.get('lot_field')
+                    if lot_field and lot:
+                        properties[lot_field] = lot
+
+                    section_field = field_mapping.get('section_field')
+                    if section_field and section:
+                        properties[section_field] = section
+                    if section:
+                        properties['section'] = section
+
+                    plan_field = field_mapping.get('plan_field')
+                    if plan_field and plan:
+                        properties[plan_field] = plan
+                    properties['plan'] = plan
+
+                except Exception as exc:
+                    logger.debug(
+                        "Unable to normalise NSW lotplan '%s': %s",
+                        feature_id,
+                        exc,
+                    )
             
             # Calculate area in hectares if geometry is available
             area_ha = None
@@ -392,6 +424,18 @@ class ArcGISClient:
         lot = attributes.get(field_mapping['lot_field'])
         plan = attributes.get(field_mapping['plan_field'])
 
+        normalized_id = str(parcel_id)
+        if isinstance(parcel_id, str):
+            try:
+                canonical, lot_norm, section_norm, plan_norm = normalize_nsw_identifier(parcel_id)
+                normalized_id = canonical
+                lot = lot_norm
+                plan = plan_norm
+                if section_norm:
+                    attributes['section'] = section_norm
+            except Exception as exc:
+                logger.debug("Unable to normalise NSW lotplan for search result '%s': %s", parcel_id, exc)
+
         locality_field = field_mapping.get('locality_field', 'locality')
         locality = attributes.get(locality_field) if locality_field else None
 
@@ -414,7 +458,7 @@ class ArcGISClient:
         label = " · ".join(label_parts) if label_parts else str(parcel_id)
 
         return SearchResult(
-            id=str(parcel_id),
+            id=normalized_id,
             state=ParcelState.NSW,
             label=label,
             address=str(address) if address is not None else None,

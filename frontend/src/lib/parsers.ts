@@ -1,89 +1,146 @@
 import type { ParcelState, ParsedParcel } from './types';
 
-// NSW Parser - handles LOT//PLAN, LOT/SECTION//PLAN formats
+const NSW_LOT_SECTION_PATTERN = /^[A-Z0-9]+$/;
+const NSW_PLAN_PATTERN = /^[A-Z]+[A-Z0-9]*$/;
+const NSW_CANONICAL_PATTERN = /^(?<lot>[A-Z0-9]+)(?:\/(?<section>[A-Z0-9]+))?\/(?<slashes>\/?)(?<plan>[A-Z]+[A-Z0-9]*)$/;
+const NSW_NOISE_TOKENS = new Set(['LOT', 'LOTS', 'SEC', 'SECTION', 'SECT', 'PLAN']);
+
+function normalizeNSWLotSection(value: string, label: string): string {
+  const cleaned = value.replace(/\s+/g, '').toUpperCase();
+  if (!cleaned || !NSW_LOT_SECTION_PATTERN.test(cleaned)) {
+    throw new Error(`Invalid NSW ${label} '${value}'`);
+  }
+  return cleaned;
+}
+
+function normalizeNSWPlan(value: string): string {
+  const cleaned = value.replace(/\s+/g, '').toUpperCase();
+  if (!cleaned || !NSW_PLAN_PATTERN.test(cleaned)) {
+    throw new Error(`Invalid NSW plan '${value}'`);
+  }
+  return cleaned;
+}
+
+function canonicalNSWId(lot: string, plan: string, section?: string) {
+  const lotClean = normalizeNSWLotSection(lot, 'lot');
+  const sectionClean = section ? normalizeNSWLotSection(section, 'section') : undefined;
+  const planClean = normalizeNSWPlan(plan);
+  const id = sectionClean ? `${lotClean}/${sectionClean}//${planClean}` : `${lotClean}//${planClean}`;
+  return { id, lot: lotClean, section: sectionClean, plan: planClean };
+}
+
+function joinNSWPlanTokens(tokens: string[]): { remaining: string[]; plan: string } {
+  if (tokens.length === 0) {
+    throw new Error('Missing NSW plan value');
+  }
+
+  let remaining = tokens.slice(0, -1);
+  let plan = tokens[tokens.length - 1];
+
+  if (/^\d+$/.test(plan) && remaining.length > 0 && /^[A-Z]+$/.test(remaining[remaining.length - 1])) {
+    plan = `${remaining[remaining.length - 1]}${plan}`;
+    remaining = remaining.slice(0, -1);
+  }
+
+  return { remaining, plan };
+}
+
+function parseNSWFragment(raw: string) {
+  let token = raw.trim();
+  if (!token) {
+    throw new Error('Empty NSW parcel token');
+  }
+
+  token = token.replace(/\\/g, '/').toUpperCase();
+  token = token.replace(/\bSECTION\b/g, 'SEC');
+  token = token.replace(/\s+/g, ' ');
+  token = token.replace(/\b([A-Z]{2,})\s+(\d+)\b/g, (_, word: string, digits: string) => `${word}${digits}`);
+
+  const canonicalMatch = NSW_CANONICAL_PATTERN.exec(token);
+  if (canonicalMatch?.groups) {
+    const lot = canonicalMatch.groups.lot;
+    const section = canonicalMatch.groups.section ?? undefined;
+    const plan = canonicalMatch.groups.plan;
+    const slashes = canonicalMatch.groups.slashes;
+
+    if (slashes === '//' || slashes === '/') {
+      return canonicalNSWId(lot, plan, section);
+    }
+  }
+
+  const parts = token
+    .split(/[\s,;/]+/)
+    .map((piece) => piece.trim())
+    .filter((piece) => !!piece && !NSW_NOISE_TOKENS.has(piece));
+
+  if (parts.length === 0) {
+    throw new Error('Unable to parse NSW lot/plan');
+  }
+
+  const { remaining, plan } = joinNSWPlanTokens(parts);
+  if (remaining.length === 0) {
+    throw new Error('Missing NSW lot value');
+  }
+
+  const lot = remaining[0];
+  const section = remaining.length > 1 ? remaining[1] : undefined;
+
+  return canonicalNSWId(lot, plan, section);
+}
+
+export function normalizeNSWIdentifier(raw: string) {
+  return parseNSWFragment(raw);
+}
+
+// NSW Parser - supports lettered sections and flexible formats
 export function parseNSW(rawText: string): {
   valid: ParsedParcel[];
   malformed: Array<{ raw: string; error: string }>;
 } {
   const valid: ParsedParcel[] = [];
   const malformed: Array<{ raw: string; error: string }> = [];
-  
-  const lines = rawText.split('\n').map(line => line.trim()).filter(Boolean);
-  
+
+  const lines = rawText.split('\n').map((line) => line.trim()).filter(Boolean);
+
   for (const line of lines) {
     try {
-      // Handle ranges like "1-3//DP131118"
-      if (line.includes('-') && line.includes('//')) {
-        const rangeMatch = line.match(/^(\d+)-(\d+)\/\/(.+)$/);
-        if (rangeMatch) {
-          const [, start, end, plan] = rangeMatch;
-          const startNum = parseInt(start);
-          const endNum = parseInt(end);
-          
-          if (startNum <= endNum && endNum - startNum <= 100) { // Reasonable range limit
-            for (let i = startNum; i <= endNum; i++) {
-              valid.push({
-                id: `${i}//${plan}`,
-                state: 'NSW',
-                raw: line,
-                lot: i.toString(),
-                plan: plan.trim()
-              });
-            }
-            continue;
-          }
+      const rangeMatch = line.match(/^(?<start>\d+)-(?:\s*)(?<end>\d+)\/\/(?<plan>.+)$/i);
+      if (rangeMatch) {
+        const start = Number.parseInt(rangeMatch.groups!.start!, 10);
+        const end = Number.parseInt(rangeMatch.groups!.end!, 10);
+        const plan = normalizeNSWPlan(rangeMatch.groups!.plan!);
+
+        if (end < start || end - start > 100) {
+          throw new Error('Range too large or invalid (max 100 lots)');
         }
-      }
-      
-      // Handle "LOT 13 DP1242624" format
-      const tokenMatch = line.match(/^LOT\s+(\d+)\s+(DP\d+)$/i);
-      if (tokenMatch) {
-        const [, lot, plan] = tokenMatch;
-        valid.push({
-          id: `${lot}//${plan}`,
-          state: 'NSW',
-          raw: line,
-          lot,
-          plan
-        });
+
+        for (let value = start; value <= end; value += 1) {
+          const canon = canonicalNSWId(String(value), plan);
+          valid.push({
+            id: canon.id,
+            state: 'NSW',
+            raw: line,
+            lot: canon.lot,
+            plan: canon.plan,
+          });
+        }
         continue;
       }
-      
-      // Handle LOT/SECTION//PLAN format
-      const sectionMatch = line.match(/^(\d+)\/(\d+)\/\/(.+)$/);
-      if (sectionMatch) {
-        const [, lot, section, plan] = sectionMatch;
-        valid.push({
-          id: line,
-          state: 'NSW',
-          raw: line,
-          lot,
-          section,
-          plan: plan.trim()
-        });
-        continue;
-      }
-      
-      // Handle simple LOT//PLAN format
-      const simpleMatch = line.match(/^(\d+)\/\/(.+)$/);
-      if (simpleMatch) {
-        const [, lot, plan] = simpleMatch;
-        valid.push({
-          id: line,
-          state: 'NSW',
-          raw: line,
-          lot,
-          plan: plan.trim()
-        });
-        continue;
-      }
-      
-      malformed.push({ raw: line, error: 'Invalid NSW format. Expected LOT//PLAN or LOT/SECTION//PLAN' });
+
+      const canon = parseNSWFragment(line);
+      valid.push({
+        id: canon.id,
+        state: 'NSW',
+        raw: line,
+        lot: canon.lot,
+        section: canon.section,
+        plan: canon.plan,
+      });
     } catch (error) {
-      malformed.push({ raw: line, error: `Parse error: ${error}` });
+      malformed.push({ raw: line, error: error instanceof Error ? error.message : String(error) });
     }
   }
-  
+
   return { valid, malformed };
 }
 

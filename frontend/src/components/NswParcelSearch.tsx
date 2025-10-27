@@ -7,6 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { apiClient } from '../lib/api';
+import { normalizeNSWIdentifier } from '../lib/parsers';
 import type { ParcelSearchResult } from '../lib/types';
 import { toast } from 'sonner';
 
@@ -85,17 +86,27 @@ export function NswParcelSearch({ onParcelSelect, disabled }: NswParcelSearchPro
   }, [debouncedTerm]);
 
   const handleSelect = (result: ParcelSearchResult) => {
-    const token = result.plan && result.lot ? `${result.lot}//${result.plan}` : result.id;
-    const appended = onParcelSelect(token);
+    const rawToken = result.id || (result.plan && result.lot ? `${result.lot}//${result.plan}` : '');
+    let normalizedToken = rawToken;
+
+    try {
+      if (rawToken) {
+        normalizedToken = normalizeNSWIdentifier(rawToken).id;
+      }
+    } catch (error) {
+      console.warn('Failed to normalise NSW lotplan from search result', error);
+    }
+
+    const appended = Boolean(normalizedToken) && onParcelSelect(normalizedToken);
 
     if (appended) {
-      toast.success(`Added ${token} to NSW parcel list`);
+      toast.success(`Added ${normalizedToken} to NSW parcel list`);
       setSearchTerm('');
       setDebouncedTerm('');
       setResults([]);
       setHasSearched(false);
     } else {
-      toast.info(`${token} is already in the NSW parcel list`);
+      toast.info(`${normalizedToken || rawToken} is already in the NSW parcel list`);
     }
   };
 
@@ -161,7 +172,14 @@ export function NswParcelSearch({ onParcelSelect, disabled }: NswParcelSearchPro
         <ScrollArea className="max-h-48">
           <div className="space-y-1">
             {results.map((result) => {
-              const token = result.plan && result.lot ? `${result.lot}//${result.plan}` : result.id;
+              let badgeToken = result.id;
+              if (result.plan && result.lot) {
+                try {
+                  badgeToken = normalizeNSWIdentifier(`${result.lot}//${result.plan}`).id;
+                } catch {
+                  badgeToken = `${result.lot}//${result.plan}`.toUpperCase();
+                }
+              }
               return (
                 <Button
                   key={result.id}
@@ -174,9 +192,9 @@ export function NswParcelSearch({ onParcelSelect, disabled }: NswParcelSearchPro
                   <div className="flex flex-col gap-1">
                     <span className="text-sm font-medium text-foreground">{result.label}</span>
                     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      {token && (
+                      {badgeToken && (
                         <Badge variant="secondary" className="font-mono text-[10px] uppercase">
-                          {token}
+                          {badgeToken}
                         </Badge>
                       )}
                       {result.address && <span>{result.address}</span>}
@@ -194,4 +212,3 @@ export function NswParcelSearch({ onParcelSelect, disabled }: NswParcelSearchPro
     </div>
   );
 }
-
