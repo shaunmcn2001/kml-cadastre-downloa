@@ -14,6 +14,9 @@ A FastAPI service for querying Australian state parcel/cadastre data from ArcGIS
 ### Local Development
 
 ```bash
+# From the repository root
+cd backend
+
 # Install dependencies
 pip install -r requirements.txt
 

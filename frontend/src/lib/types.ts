@@ -85,6 +85,7 @@ export interface ExportRequest {
     folderName?: string;
     fillColor?: string;
     strokeColor?: string;
+    mergeByName?: boolean;
   };
 }
 

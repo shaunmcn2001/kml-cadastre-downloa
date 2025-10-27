@@ -8,7 +8,17 @@ import { Input } from '@/components/ui/input';
 import { Download, Package, Image, AlertTriangle, Folder } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { apiClient } from '../lib/api';
+import { cn } from '../lib/utils';
 import type { ParcelFeature } from '../lib/types';
+
+const COLOR_PRESETS = [
+  { label: 'Subjects', value: '#009FDF' },
+  { label: 'Quotes', value: '#A23F97' },
+  { label: 'Sales', value: '#FF0000' },
+  { label: 'For Sales', value: '#ED7D31' }
+] as const;
+
+const DEFAULT_COLOR = COLOR_PRESETS[1].value;
 
 interface ExportPanelProps {
   features: ParcelFeature[];
@@ -20,6 +30,43 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
   const [exportingKMZ, setExportingKMZ] = React.useState(false);
   const [exportingGeoTIFF, setExportingGeoTIFF] = React.useState(false);
   const [folderName, setFolderName] = React.useState('');
+  const [selectedColor, setSelectedColor] = React.useState<string>(DEFAULT_COLOR);
+  const [hexInputValue, setHexInputValue] = React.useState<string>(DEFAULT_COLOR);
+  const [activePreset, setActivePreset] = React.useState<string | 'custom'>(DEFAULT_COLOR);
+
+  const applyColor = React.useCallback((value: string, source: 'preset' | 'custom') => {
+    const normalised = value.startsWith('#') ? value.toUpperCase() : `#${value.toUpperCase()}`;
+    if (!/^#[0-9A-F]{6}$/.test(normalised)) {
+      return;
+    }
+    setSelectedColor(normalised);
+    setHexInputValue(normalised);
+    setActivePreset(source === 'preset' ? normalised : 'custom');
+  }, []);
+
+  const handlePresetClick = React.useCallback((value: string) => {
+    applyColor(value, 'preset');
+  }, [applyColor]);
+
+  const handleColorPickerChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    applyColor(event.target.value, 'custom');
+  }, [applyColor]);
+
+  const handleHexInputChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const rawValue = event.target.value.toUpperCase();
+    const normalised = rawValue.startsWith('#') ? rawValue : `#${rawValue}`;
+
+    if (/^#[0-9A-F]{0,6}$/.test(normalised)) {
+      setHexInputValue(normalised);
+      if (normalised.length === 7 && /^#[0-9A-F]{6}$/.test(normalised)) {
+        applyColor(normalised, 'custom');
+      }
+    }
+  }, [applyColor]);
+
+  const handleHexInputBlur = React.useCallback(() => {
+    setHexInputValue(selectedColor);
+  }, [selectedColor]);
 
   const hasFeatures = features.length > 0;
   const totalArea = features.reduce((sum, f) => sum + (f.properties.area_ha || 0), 0);
@@ -111,10 +158,11 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
         styleOptions: {
           fillOpacity: 0.4,
           strokeWidth: 3,
-          colorByState: true,
-          googleEarthOptimized: true, // Enable Google Earth Web/Pro compatibility
-          version: '2.3', // Use latest KML version
-          folderName: folderName.trim() || undefined
+          colorByState: false,
+          folderName: folderName.trim() || undefined,
+          fillColor: selectedColor,
+          strokeColor: selectedColor,
+          mergeByName: true
         }
       });
 
@@ -150,10 +198,11 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
         styleOptions: {
           fillOpacity: 0.4,
           strokeWidth: 3,
-          colorByState: true,
-          googleEarthOptimized: true, // Enable Google Earth Web/Pro compatibility
-          version: '2.3', // Use latest KML version
-          folderName: folderName.trim() || undefined
+          colorByState: false,
+          folderName: folderName.trim() || undefined,
+          fillColor: selectedColor,
+          strokeColor: selectedColor,
+          mergeByName: true
         }
       });
 
@@ -255,19 +304,75 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
           <div className="space-y-2">
             <Label htmlFor="folder-name" className="text-sm font-medium flex items-center gap-2">
               <Folder className="w-4 h-4" />
-              KML Folder Name (Optional)
+              Export Folder Name (Address)
             </Label>
             <Input
               id="folder-name"
               type="text"
-              placeholder="e.g., My Parcels"
+              placeholder="e.g., 123 Sample Street"
               value={folderName}
               onChange={(e) => setFolderName(e.target.value)}
               className="text-sm"
               maxLength={100}
             />
             <p className="text-xs text-muted-foreground">
-              Leave empty for default folder name
+              Used for the KMZ folder and KML document name. Leave empty for default naming.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Polygon Colour</Label>
+            <div className="flex flex-wrap gap-4">
+              {COLOR_PRESETS.map(preset => (
+                <button
+                  key={preset.value}
+                  type="button"
+                  onClick={() => handlePresetClick(preset.value)}
+                  className={cn(
+                    'flex flex-col items-center gap-1 text-xs transition-colors',
+                    activePreset === preset.value ? 'text-foreground font-medium' : 'text-muted-foreground'
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'h-9 w-9 rounded-full border border-border shadow-sm transition-all',
+                      activePreset === preset.value ? 'ring-2 ring-offset-2 ring-primary' : ''
+                    )}
+                    style={{ backgroundColor: preset.value }}
+                    aria-hidden
+                  />
+                  <span>{preset.label}</span>
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                type="color"
+                value={selectedColor}
+                onChange={handleColorPickerChange}
+                className="h-10 w-16 cursor-pointer rounded border border-input bg-background p-1"
+                aria-label="Choose custom polygon colour"
+              />
+              <Input
+                value={hexInputValue}
+                onChange={handleHexInputChange}
+                onBlur={handleHexInputBlur}
+                maxLength={7}
+                className="w-28 font-mono text-sm uppercase"
+                aria-label="Polygon colour hex code"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => applyColor(DEFAULT_COLOR, 'preset')}
+                disabled={selectedColor === DEFAULT_COLOR}
+              >
+                Reset
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Fill opacity is fixed at 40%. The 3px outline uses the same colour for clarity in Google Earth.
             </p>
           </div>
 

@@ -86,6 +86,7 @@ class StyleOptions(BaseModel):
     folderName: Optional[str] = None
     fillColor: Optional[str] = None
     strokeColor: Optional[str] = None
+    mergeByName: Optional[bool] = False
 
     @field_validator("fillOpacity")
     @classmethod

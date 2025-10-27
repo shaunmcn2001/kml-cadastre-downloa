@@ -42,9 +42,10 @@ LOT 13 DP1242624
 1-3//DP555123
 101/1//DP12345`,
     QLD: `1RP912949
-13SP12345
-245GTP4567
-1SL123456`,
+1 RP 912949
+Lot 1 RP912949
+Lot 1 on RP 912949
+13SP12345`,
     SA: `101//D12345
 102//F23456
 1/234//CT5678
@@ -99,7 +100,9 @@ LOT 13 DP1242624
                   {exampleTexts.QLD}
                 </div>
                 <p className="mt-2 text-xs">
-                  Supports: lotidstring format (numbers + letters + numbers)
+                  Supports: contiguous lotplans (e.g. 1RP912949), spaced variants (1 RP 912949),
+                  and descriptive formats like “Lot 1 on RP912949”. Separate multiple entries with new
+                  lines or commas.
                 </p>
               </div>
             </TabsContent>

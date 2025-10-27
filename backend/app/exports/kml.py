@@ -1,8 +1,12 @@
-from typing import List, Optional
+from collections import defaultdict
+from typing import Dict, List, Optional, Tuple
 
 import simplekml
+from pyproj import Geod
+from shapely.geometry import GeometryCollection, shape, mapping
+from shapely.ops import unary_union
 
-from ..models import Feature, StyleOptions
+from ..models import Feature, FeatureProperties, StyleOptions
 from ..utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -17,6 +21,8 @@ STATE_COLORS = {
 _DEFAULT_STYLE = StyleOptions()
 _DEFAULT_FILL_OPACITY = _DEFAULT_STYLE.fillOpacity or 0.0
 _DEFAULT_STROKE_WIDTH = _DEFAULT_STYLE.strokeWidth or 3.0
+
+_GEOD = Geod(ellps="WGS84")
 
 
 def _opacity_to_alpha(opacity: Optional[float]) -> int:
@@ -61,6 +67,85 @@ def _build_style(
     return style
 
 
+def _calculate_area_hectares(geom) -> Optional[float]:
+    try:
+        area, _ = _GEOD.geometry_area_perimeter(geom)
+        return abs(area) / 10000.0
+    except Exception as exc:
+        logger.debug(f"Failed to calculate merged geometry area: {exc}")
+        return None
+
+
+def _merge_features_by_name(
+    features: List[Feature],
+    style_options: StyleOptions
+) -> List[Feature]:
+    """Union geometries that share a display name so the KMZ matches requested formatting."""
+
+    if not features:
+        return []
+
+    if not style_options.mergeByName:
+        return features
+
+    grouped: Dict[Tuple[str, str], List[Feature]] = defaultdict(list)
+
+    for feature in features:
+        props = feature.properties
+        display_name = (style_options.folderName or props.name or props.id or "Parcel").strip()
+        key = (props.state, display_name)
+        grouped[key].append(feature)
+
+    merged_features: List[Feature] = []
+
+    for (state, display_name), group in grouped.items():
+        geometries = []
+        for feat in group:
+            try:
+                geom = shape(feat.geometry)
+                if geom.is_empty:
+                    continue
+                geometries.append(geom)
+            except Exception as exc:
+                logger.warning(
+                    f"Skipping feature {getattr(feat.properties, 'id', 'unknown')} during merge: {exc}"
+                )
+
+        if not geometries:
+            continue
+
+        merged_geom = unary_union(geometries) if len(geometries) > 1 else geometries[0]
+
+        if isinstance(merged_geom, GeometryCollection):
+            polygons = [geom for geom in merged_geom.geoms if geom.geom_type in ("Polygon", "MultiPolygon")]
+            if not polygons:
+                logger.warning(
+                    f"Merged geometry for '{display_name}' produced non-polygonal collection; skipping."
+                )
+                continue
+            merged_geom = unary_union(polygons) if len(polygons) > 1 else polygons[0]
+
+        geometry_dict = mapping(merged_geom)
+
+        props_template = group[0].properties.model_dump()
+        props_template["state"] = state
+        props_template["name"] = display_name or props_template.get("name") or props_template.get("id") or "Parcel"
+        props_template["id"] = props_template.get("id") or props_template["name"]
+
+        area_ha = _calculate_area_hectares(merged_geom)
+        if area_ha is None:
+            area_ha = sum(feat.properties.area_ha or 0.0 for feat in group) or None
+        props_template["area_ha"] = area_ha
+
+        merged_feature = Feature(
+            geometry=geometry_dict,
+            properties=FeatureProperties(**props_template)
+        )
+        merged_features.append(merged_feature)
+
+    return merged_features if merged_features else features
+
+
 def export_kml(features: List[Feature], style_options: StyleOptions = None) -> str:
     """Export features to KML format with sidebar-only lotplan names and no snippet."""
     if not features:
@@ -69,7 +154,13 @@ def export_kml(features: List[Feature], style_options: StyleOptions = None) -> s
     if style_options is None:
         style_options = StyleOptions()
 
-    logger.info(f"Exporting {len(features)} features to KML")
+    merged_features = _merge_features_by_name(features, style_options)
+
+    logger.info(
+        "Exporting %d features to KML (merged from %d source features)",
+        len(merged_features),
+        len(features),
+    )
 
     # Create KML document
     kml = simplekml.Kml()
@@ -85,7 +176,7 @@ def export_kml(features: List[Feature], style_options: StyleOptions = None) -> s
     # Group features by state if requested and no custom folder name is provided
     if style_options.colorByState and not style_options.folderName:
         features_by_state = {}
-        for feature in features:
+        for feature in merged_features:
             state = feature.properties.state
             features_by_state.setdefault(state, []).append(feature)
 
@@ -110,7 +201,7 @@ def export_kml(features: List[Feature], style_options: StyleOptions = None) -> s
         if style_options.colorByState:
             # Group by state for styling but keep in single folder
             features_by_state = {}
-            for feature in features:
+            for feature in merged_features:
                 state = feature.properties.state
                 features_by_state.setdefault(state, []).append(feature)
 
@@ -139,7 +230,7 @@ def export_kml(features: List[Feature], style_options: StyleOptions = None) -> s
                 stroke_override=stroke_override,
             )
 
-            _add_features_to_container(folder, features, style)
+            _add_features_to_container(folder, merged_features, style)
     else:
         # Single style for all features
         fill_override = None
@@ -156,7 +247,7 @@ def export_kml(features: List[Feature], style_options: StyleOptions = None) -> s
             stroke_override=stroke_override,
         )
 
-        _add_features_to_container(kml, features, style)
+        _add_features_to_container(kml, merged_features, style)
 
     logger.info("KML export completed successfully")
     return kml.kml()
