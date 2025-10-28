@@ -2,12 +2,23 @@ import React, { useEffect, useRef, useState } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import '@geoman-io/leaflet-geoman-free';
+import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
+import 'leaflet-geosearch/dist/geosearch.css';
 import type { ParcelFeature, ParcelState } from '../lib/types';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { MapPin } from '@phosphor-icons/react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select';
+import { GeoSearchControl, OpenStreetMapProvider } from 'leaflet-geosearch';
 
 // Fix for default markers
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -51,6 +62,20 @@ export function MapView({ features, isLoading }: MapViewProps) {
     SA: true,
     VIC: true
   });
+  const [baseLayer, setBaseLayer] = useState<'streets' | 'satellite'>('streets');
+
+  const basemapConfig = {
+    streets: {
+      label: 'Modern Streets',
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+    },
+    satellite: {
+      label: 'Esri Satellite',
+      attribution: 'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+      url: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+    }
+  } as const;
 
   const filteredFeatures = features.filter(feature => 
     layerVisibility[feature.properties.state]
@@ -116,7 +141,7 @@ export function MapView({ features, isLoading }: MapViewProps) {
   };
 
   const getStateCounts = () => {
-    const counts: Record<ParcelState, number> = { NSW: 0, QLD: 0, SA: 0 };
+    const counts: Record<ParcelState, number> = { NSW: 0, QLD: 0, SA: 0, VIC: 0 };
     features.forEach(feature => {
       counts[feature.properties.state]++;
     });
@@ -126,16 +151,33 @@ export function MapView({ features, isLoading }: MapViewProps) {
   const stateCounts = getStateCounts();
 
   return (
-    <Card className="h-full flex flex-col">
+    <Card className="h-full flex flex-col min-h-[520px]">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2">
-          <MapPin className="w-4 h-4" />
-          Interactive Map
-          {isLoading && <div className="w-4 h-4 animate-spin border-2 border-primary border-t-transparent rounded-full" />}
-        </CardTitle>
-        
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <MapPin className="w-4 h-4" />
+            Interactive Map
+            {isLoading && <div className="w-4 h-4 animate-spin border-2 border-primary border-t-transparent rounded-full" />}
+          </CardTitle>
+
+          <div className="flex items-center gap-2 text-xs">
+            <Label htmlFor="basemap-select" className="text-xs font-medium text-muted-foreground">
+              Base Layer
+            </Label>
+            <Select value={baseLayer} onValueChange={(value: 'streets' | 'satellite') => setBaseLayer(value)}>
+              <SelectTrigger id="basemap-select" className="h-8 w-[180px] text-xs">
+                <SelectValue placeholder="Select basemap" />
+              </SelectTrigger>
+              <SelectContent className="text-xs">
+                <SelectItem value="streets">{basemapConfig.streets.label}</SelectItem>
+                <SelectItem value="satellite">{basemapConfig.satellite.label}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
         {/* Layer Controls */}
-        <div className="flex flex-wrap gap-3 mt-2">
+        <div className="flex flex-wrap gap-3 mt-4">
           {(['NSW', 'QLD', 'SA', 'VIC'] as ParcelState[]).map(state => (
             <div key={state} className="flex items-center space-x-2">
               <Switch
@@ -168,21 +210,29 @@ export function MapView({ features, isLoading }: MapViewProps) {
         </div>
       </CardHeader>
 
-      <CardContent className="flex-1 p-0 relative">
-        <div className="absolute inset-0">
+      <CardContent className="flex-1 p-0 relative min-h-[480px]">
+        <div className="absolute inset-0 rounded-b-lg overflow-hidden">
           {filteredFeatures.length > 0 ? (
             <MapContainer
               center={[-27.4705, 133.0000]}
               zoom={6}
-              className="h-full w-full rounded-b-lg"
+              className="h-full w-full"
               zoomControl={true}
               style={{ background: 'transparent' }}
             >
               <TileLayer
-                attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                className="map-tiles"
+                key={baseLayer}
+                attribution={basemapConfig[baseLayer].attribution}
+                url={basemapConfig[baseLayer].url}
               />
+              {baseLayer === 'satellite' && (
+                <TileLayer
+                  key="satellite-labels"
+                  opacity={0.7}
+                  attribution="Boundaries © Esri"
+                  url="https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+                />
+              )}
               <GeoJSON 
                 key={`${filteredFeatures.length}-${Object.values(layerVisibility).join()}`}
                 data={{
@@ -192,6 +242,7 @@ export function MapView({ features, isLoading }: MapViewProps) {
                 onEachFeature={onEachFeature}
               />
               <MapUpdater features={filteredFeatures} />
+              <MapEnhancements />
             </MapContainer>
           ) : (
             <div className="flex items-center justify-center h-full bg-muted/20 rounded-b-lg">
@@ -207,4 +258,67 @@ export function MapView({ features, isLoading }: MapViewProps) {
       </CardContent>
     </Card>
   );
+}
+
+function MapEnhancements() {
+  const map = useMap();
+  const initialized = useRef(false);
+
+  useEffect(() => {
+    if (initialized.current) return;
+
+    map.pm.addControls({
+      position: 'topright',
+      drawCircle: true,
+      drawMarker: false,
+      drawCircleMarker: false,
+      drawPolyline: true,
+      drawPolygon: true,
+      drawRectangle: true,
+      drawText: false,
+      editMode: true,
+      dragMode: false,
+      cutPolygon: false,
+      rotateMode: false,
+      removalMode: true
+    });
+
+    map.pm.setGlobalOptions({
+      measurements: true
+    });
+
+    initialized.current = true;
+
+    return () => {
+      map.pm.removeControls();
+    };
+  }, [map]);
+
+  useEffect(() => {
+    const provider = new OpenStreetMapProvider();
+    const searchControl = new GeoSearchControl({
+      provider,
+      style: 'bar',
+      position: 'topleft',
+      showMarker: true,
+      showPopup: false,
+      retainZoomLevel: false,
+      animateZoom: true,
+      keepResult: true,
+      searchLabel: 'Search address…'
+    });
+
+    map.addControl(searchControl);
+
+    const container = searchControl.getContainer?.();
+    if (container) {
+      container.classList.add('geosearch-control');
+    }
+
+    return () => {
+      map.removeControl(searchControl);
+    };
+  }, [map]);
+
+  return null;
 }
