@@ -25,7 +25,8 @@ interface MapViewProps {
 const stateColors = {
   NSW: '#1f2937', // Dark blue-gray
   QLD: '#7c2d12', // Dark red
-  SA: '#14532d'   // Dark green
+  SA: '#14532d',  // Dark green
+  VIC: '#6b21a8'  // Deep purple
 };
 
 function MapUpdater({ features }: { features: ParcelFeature[] }) {
@@ -47,7 +48,8 @@ export function MapView({ features, isLoading }: MapViewProps) {
   const [layerVisibility, setLayerVisibility] = useState<Record<ParcelState, boolean>>({
     NSW: true,
     QLD: true,
-    SA: true
+    SA: true,
+    VIC: true
   });
 
   const filteredFeatures = features.filter(feature => 
@@ -134,7 +136,7 @@ export function MapView({ features, isLoading }: MapViewProps) {
         
         {/* Layer Controls */}
         <div className="flex flex-wrap gap-3 mt-2">
-          {(['NSW', 'QLD', 'SA'] as ParcelState[]).map(state => (
+          {(['NSW', 'QLD', 'SA', 'VIC'] as ParcelState[]).map(state => (
             <div key={state} className="flex items-center space-x-2">
               <Switch
                 id={`layer-${state}`}

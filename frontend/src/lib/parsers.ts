@@ -387,6 +387,99 @@ export function parseSA(rawText: string): {
   return { valid, malformed };
 }
 
+const VIC_PLAN_PATTERN = /^[A-Z]{1,4}\d+[A-Z0-9]*$/;
+const VIC_LOT_PATTERN = /^[A-Z0-9]+$/;
+
+function normaliseVicIdentifier(raw: string) {
+  let cleaned = raw.trim().toUpperCase();
+  if (!cleaned) {
+    throw new Error('Empty VIC parcel identifier');
+  }
+
+  if (cleaned.includes('\\')) {
+    const [lotRaw, planRaw] = cleaned.split('\\', 2).map((part) => part.trim());
+    return canonicalVic(lotRaw, planRaw);
+  }
+
+  cleaned = cleaned.replace(/\//g, ' ');
+  cleaned = cleaned.replace(/[,;]+/g, ' ');
+  cleaned = cleaned.replace(/\bLOT\b/g, ' ');
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+
+  if (!cleaned) {
+    throw new Error('Invalid VIC parcel identifier');
+  }
+
+  const tokens = cleaned.split(' ');
+
+  let plan: string | undefined;
+  let planIndex = -1;
+  for (let idx = tokens.length - 1; idx >= 0; idx -= 1) {
+    if (VIC_PLAN_PATTERN.test(tokens[idx])) {
+      plan = tokens[idx];
+      planIndex = idx;
+      break;
+    }
+  }
+
+  if (!plan) {
+    throw new Error('Missing plan component (e.g. PS433970)');
+  }
+
+  const lotCandidates = tokens.filter((_, index) => index !== planIndex && tokens[index]);
+  if (lotCandidates.length === 0) {
+    throw new Error('Missing lot component');
+  }
+
+  const lot = lotCandidates[0];
+  return canonicalVic(lot, plan);
+}
+
+function canonicalVic(lot: string, plan: string) {
+  const lotClean = lot.trim().toUpperCase();
+  const planClean = plan.trim().toUpperCase();
+
+  if (!lotClean || !VIC_LOT_PATTERN.test(lotClean)) {
+    throw new Error('Invalid lot component');
+  }
+  if (!planClean || !VIC_PLAN_PATTERN.test(planClean)) {
+    throw new Error('Invalid plan component');
+  }
+
+  return {
+    id: `${lotClean}\\${planClean}`,
+    lot: lotClean,
+    plan: planClean,
+  };
+}
+
+export function parseVIC(rawText: string): {
+  valid: ParsedParcel[];
+  malformed: Array<{ raw: string; error: string }>;
+} {
+  const valid: ParsedParcel[] = [];
+  const malformed: Array<{ raw: string; error: string }> = [];
+
+  const lines = rawText.split('\n').map((line) => line.trim()).filter(Boolean);
+
+  for (const line of lines) {
+    try {
+      const { id, lot, plan } = normaliseVicIdentifier(line);
+      valid.push({
+        id,
+        state: 'VIC',
+        raw: line,
+        lot,
+        plan,
+      });
+    } catch (error) {
+      malformed.push({ raw: line, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  return { valid, malformed };
+}
+
 export function parseParcelInput(state: ParcelState, rawText: string) {
   switch (state) {
     case 'NSW':
@@ -395,6 +488,8 @@ export function parseParcelInput(state: ParcelState, rawText: string) {
       return parseQLD(rawText);
     case 'SA':
       return parseSA(rawText);
+    case 'VIC':
+      return parseVIC(rawText);
     default:
       throw new Error(`Unsupported state: ${state}`);
   }

@@ -4,7 +4,7 @@ A modern React application for downloading Australian cadastral data as KML/KMZ 
 
 ## Features
 
-- **Multi-State Support**: Parse and query parcels from NSW, QLD, and SA
+- **Multi-State Support**: Parse and query parcels from NSW, QLD, SA, and VIC
 - **Bulk Processing**: Handle large sets of parcel identifiers with validation
 - **NSW Parcel Search**: Discover NSW parcels via live MapServer/9 search results
 - **Interactive Map**: Preview queried parcels with Leaflet integration
@@ -89,6 +89,10 @@ npm run preview
 #### SA
 - `PARCEL//PLAN`: `101//D12345`
 - `VOLUME/FOLIO//PLAN`: `1/234//CT5678`
+
+#### VIC
+- `LOT\PLAN`: `27\PS433970`
+- Alternate inputs: `27 PS433970`, `27/PS433970`, `Lot 27 PS433970`
 
 ## Architecture
 

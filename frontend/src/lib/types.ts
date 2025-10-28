@@ -1,4 +1,4 @@
-export type ParcelState = 'NSW' | 'QLD' | 'SA';
+export type ParcelState = 'NSW' | 'QLD' | 'SA' | 'VIC';
 
 export interface ParsedParcel {
   id: string;

@@ -48,7 +48,11 @@ Lot 1 on RP 912949
     SA: `CT6204/831
 D117877 A22
 A22 D117877
-Lot A1 D12345`
+Lot A1 D12345`,
+    VIC: `27\\PS433970
+27/PS433970
+27 PS433970
+Lot 27 PS433970`
   };
 
   return (
@@ -69,10 +73,11 @@ Lot A1 D12345`
             onValueChange={(value) => updateSelectedState(value as ParcelState)}
             className="w-full mt-2"
           >
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="NSW">NSW</TabsTrigger>
               <TabsTrigger value="QLD">QLD</TabsTrigger>
               <TabsTrigger value="SA">SA</TabsTrigger>
+              <TabsTrigger value="VIC">VIC</TabsTrigger>
             </TabsList>
             
             <TabsContent value="NSW" className="space-y-3 mt-4">
@@ -112,6 +117,19 @@ Lot A1 D12345`
                 <p className="mt-2 text-xs">
                   Supports: title references (e.g. CT6204/831) and plan parcels in any order
                   (e.g. D117877 A22 or A22 D117877). Separate multiple entries with new lines or commas.
+                </p>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="VIC" className="space-y-3 mt-4">
+              <div className="text-sm text-muted-foreground">
+                <p className="font-medium mb-2">VIC Format Examples:</p>
+                <div className="bg-muted p-2 rounded text-xs font-mono">
+                  {exampleTexts.VIC}
+                </div>
+                <p className="mt-2 text-xs">
+                  Supports: PARCEL_SPI values like <code>27\PS433970</code> and flexible inputs such as
+                  <code>27/PS433970</code> or <code>Lot 27 PS433970</code>. Backslashes are added automatically.
                 </p>
               </div>
             </TabsContent>

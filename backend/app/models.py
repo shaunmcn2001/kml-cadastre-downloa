@@ -6,6 +6,7 @@ class ParcelState(str, Enum):
     NSW = "NSW"
     QLD = "QLD"
     SA = "SA"
+    VIC = "VIC"
 
 class ParsedParcel(BaseModel):
     id: str

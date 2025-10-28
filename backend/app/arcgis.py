@@ -6,6 +6,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential, before_sleep_log
 from .models import ParcelState, Feature, SearchResult
 from .parsers.nsw import normalize_nsw_identifier
+from .parsers.vic import normalize_vic_spi
 from .utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -19,7 +20,8 @@ _SA_PLAN_PARCEL_PATTERN = re.compile(r"^[A-Z]+\d+[A-Z0-9]*\s+[A-Z0-9]+$")
 ARCGIS_SERVICES = {
     ParcelState.NSW: "https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Cadastre/MapServer/9",
     ParcelState.QLD: "https://spatial-gis.information.qld.gov.au/arcgis/rest/services/PlanningCadastre/LandParcelPropertyFramework/MapServer/4", 
-    ParcelState.SA: "https://lsa2.geohub.sa.gov.au/server/rest/services/SAPPA/PropertyPlanningAtlasV17/MapServer/269"
+    ParcelState.SA: "https://lsa2.geohub.sa.gov.au/server/rest/services/SAPPA/PropertyPlanningAtlasV17/MapServer/269",
+    ParcelState.VIC: "https://plan-gis.mapshare.vic.gov.au/arcgis/rest/services/Planning/VicPlan_PropertyAndParcel/MapServer/4",
 }
 
 # Field mappings for different states
@@ -50,10 +52,20 @@ STATE_FIELD_MAPPINGS = {
         'name_field': 'parcel_id',
         'title_field': 'title_ref',
         'lot_field': None,
-        'plan_field': 'parcel_id',
+        'plan_field': None,
         'search_fields': ['parcel_id', 'title_ref'],
         'like_fields': ['parcel_id', 'title_ref'],
         'extra_fields': ['title_ref']
+    },
+    ParcelState.VIC: {
+        'id_field': 'PARCEL_SPI',
+        'name_field': 'PARCEL_SPI',
+        'lot_field': 'PARCEL_LOT_NUMBER',
+        'plan_field': 'PARCEL_PLAN_NUMBER',
+        'search_fields': ['PARCEL_SPI', 'PARCEL_LOT_NUMBER', 'PARCEL_PLAN_NUMBER'],
+        'like_fields': ['PARCEL_SPI'],
+        'extra_fields': ['PARCEL_PFI'],
+        'order_field': 'PARCEL_SPI'
     }
 }
 
@@ -475,6 +487,28 @@ class ArcGISClient:
                 if canonical:
                     feature_id = canonical
                     name = canonical
+
+            elif state == ParcelState.VIC and isinstance(feature_id, str):
+                try:
+                    canonical, lot, plan = normalize_vic_spi(feature_id)
+                    feature_id = canonical
+                    name = canonical
+
+                    properties[field_mapping['id_field']] = canonical
+                    properties['parcel_spi'] = canonical
+                    properties['lot'] = lot
+                    properties['plan'] = plan
+
+                    lot_field = field_mapping.get('lot_field')
+                    if lot_field:
+                        properties[lot_field] = lot
+
+                    plan_field = field_mapping.get('plan_field')
+                    if plan_field:
+                        properties[plan_field] = plan
+
+                except Exception as exc:
+                    logger.debug("Unable to normalise VIC parcel SPI '%s': %s", feature_id, exc)
 
             # Calculate area in hectares if geometry is available
             area_ha = None

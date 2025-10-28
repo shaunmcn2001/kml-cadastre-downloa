@@ -16,6 +16,7 @@ STATE_COLORS = {
     'NSW': simplekml.Color.blue,
     'QLD': simplekml.Color.red,
     'SA': simplekml.Color.green,
+    'VIC': simplekml.Color.yellow,
 }
 
 _DEFAULT_STYLE = StyleOptions()
@@ -260,7 +261,7 @@ def _display_name_from_props(props) -> str:
     Sidebar name should be just the lotplan.
     Tries common fields in order; falls back to id if nothing else exists.
     """
-    for key in ("lotplan", "lot_plan", "lot_plan_id", "name"):
+    for key in ("lotplan", "lot_plan", "lot_plan_id", "parcel_spi", "PARCEL_SPI", "name"):
         if hasattr(props, key) and getattr(props, key):
             return str(getattr(props, key))
     return str(getattr(props, "id", "Parcel"))
@@ -311,22 +312,20 @@ def _add_features_to_container(container, features: List[Feature], style):
                 if not coords:
                     continue
 
-                total_parts = len(coords)
-                for index, poly_coords in enumerate(coords, start=1):
+                multigeom = container.newmultigeometry()
+                _apply_common_metadata(multigeom, props, desired_name)
+
+                for poly_coords in coords:
                     if not poly_coords:
                         continue
 
-                    placemark = container.newpolygon()
-                    part_name = (
-                        f"{desired_name} (Part {index})"
-                        if total_parts > 1 else desired_name
-                    )
-                    _apply_common_metadata(placemark, props, part_name)
-
-                    placemark.outerboundaryis = poly_coords[0]
+                    child_poly = multigeom.newpolygon()
+                    child_poly.outerboundaryis = poly_coords[0]
                     if len(poly_coords) > 1:
-                        for inner_coords in poly_coords[1:]:
-                            placemark.innerboundaryis = inner_coords
+                        child_poly.innerboundaryis = [inner for inner in poly_coords[1:] if inner]
+
+                    # Apply consistent styling to child polygons
+                    child_poly.style = style
 
             else:
                 logger.warning(
