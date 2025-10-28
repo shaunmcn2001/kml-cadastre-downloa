@@ -2,15 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import '@geoman-io/leaflet-geoman-free';
-import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
-import 'leaflet-geosearch/dist/geosearch.css';
 import type { ParcelFeature, ParcelState } from '../lib/types';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { MapPin } from '@phosphor-icons/react';
+import { MapPin, MagnifyingGlass, XCircle } from '@phosphor-icons/react';
 import {
   Select,
   SelectContent,
@@ -18,7 +15,9 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
-import { GeoSearchControl, OpenStreetMapProvider } from 'leaflet-geosearch';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { OpenStreetMapProvider } from 'leaflet-geosearch';
 
 // Fix for default markers
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -63,6 +62,11 @@ export function MapView({ features, isLoading }: MapViewProps) {
     VIC: true
   });
   const [baseLayer, setBaseLayer] = useState<'streets' | 'satellite'>('streets');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const searchMarkerRef = useRef<L.Marker | null>(null);
 
   const basemapConfig = {
     streets: {
@@ -150,6 +154,63 @@ export function MapView({ features, isLoading }: MapViewProps) {
 
   const stateCounts = getStateCounts();
 
+  const handleSearch = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!searchTerm.trim() || !mapRef.current) {
+      return;
+    }
+
+    setIsSearching(true);
+    setSearchError(null);
+
+    try {
+      const provider = new OpenStreetMapProvider();
+      const results = await provider.search({ query: searchTerm.trim() });
+
+      if (!results.length) {
+        setSearchError('No matching address found');
+        return;
+      }
+
+      const { x, y, label } = results[0];
+      const latLng = L.latLng(y, x);
+
+      if (searchMarkerRef.current) {
+        searchMarkerRef.current.remove();
+      }
+
+      searchMarkerRef.current = L.marker(latLng, {
+        icon: L.icon({
+          iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+          iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+          iconAnchor: [12, 41],
+        })
+      }).addTo(mapRef.current);
+
+      searchMarkerRef.current.bindPopup(`<strong>${label}</strong>`).openPopup();
+
+      mapRef.current.flyTo(latLng, 16, {
+        animate: true,
+        duration: 1.2
+      });
+    } catch (error) {
+      console.error('Geosearch failed', error);
+      setSearchError('Unable to search that address right now');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const clearSearch = () => {
+    setSearchTerm('');
+    setSearchError(null);
+    if (searchMarkerRef.current) {
+      searchMarkerRef.current.remove();
+      searchMarkerRef.current = null;
+    }
+  };
+
   return (
     <Card className="h-full flex flex-col min-h-[520px]">
       <CardHeader className="pb-3">
@@ -160,19 +221,46 @@ export function MapView({ features, isLoading }: MapViewProps) {
             {isLoading && <div className="w-4 h-4 animate-spin border-2 border-primary border-t-transparent rounded-full" />}
           </CardTitle>
 
-          <div className="flex items-center gap-2 text-xs">
-            <Label htmlFor="basemap-select" className="text-xs font-medium text-muted-foreground">
-              Base Layer
-            </Label>
-            <Select value={baseLayer} onValueChange={(value: 'streets' | 'satellite') => setBaseLayer(value)}>
-              <SelectTrigger id="basemap-select" className="h-8 w-[180px] text-xs">
-                <SelectValue placeholder="Select basemap" />
-              </SelectTrigger>
-              <SelectContent className="text-xs">
-                <SelectItem value="streets">{basemapConfig.streets.label}</SelectItem>
-                <SelectItem value="satellite">{basemapConfig.satellite.label}</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 text-xs">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="basemap-select" className="text-xs font-medium text-muted-foreground">
+                Base Layer
+              </Label>
+              <Select value={baseLayer} onValueChange={(value: 'streets' | 'satellite') => setBaseLayer(value)}>
+                <SelectTrigger id="basemap-select" className="h-8 w-[180px] text-xs">
+                  <SelectValue placeholder="Select basemap" />
+                </SelectTrigger>
+                <SelectContent className="text-xs">
+                  <SelectItem value="streets">{basemapConfig.streets.label}</SelectItem>
+                  <SelectItem value="satellite">{basemapConfig.satellite.label}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <form onSubmit={handleSearch} className="flex items-center gap-2">
+              <div className="relative">
+                <MagnifyingGlass className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Search address or place"
+                  className="h-8 w-[200px] pl-7 text-xs"
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={clearSearch}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    aria-label="Clear search"
+                  >
+                    <XCircle className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <Button type="submit" size="sm" disabled={isSearching} className="h-8 text-xs">
+                {isSearching ? 'Searching…' : 'Go'}
+              </Button>
+            </form>
           </div>
         </div>
 
@@ -218,6 +306,9 @@ export function MapView({ features, isLoading }: MapViewProps) {
               zoom={6}
               className="h-full w-full"
               zoomControl={true}
+              whenCreated={(mapInstance) => {
+                mapRef.current = mapInstance;
+              }}
               style={{ background: 'transparent' }}
             >
               <TileLayer
@@ -242,7 +333,6 @@ export function MapView({ features, isLoading }: MapViewProps) {
                 onEachFeature={onEachFeature}
               />
               <MapUpdater features={filteredFeatures} />
-              <MapEnhancements />
             </MapContainer>
           ) : (
             <div className="flex items-center justify-center h-full bg-muted/20 rounded-b-lg">
@@ -258,67 +348,4 @@ export function MapView({ features, isLoading }: MapViewProps) {
       </CardContent>
     </Card>
   );
-}
-
-function MapEnhancements() {
-  const map = useMap();
-  const initialized = useRef(false);
-
-  useEffect(() => {
-    if (initialized.current) return;
-
-    map.pm.addControls({
-      position: 'topright',
-      drawCircle: true,
-      drawMarker: false,
-      drawCircleMarker: false,
-      drawPolyline: true,
-      drawPolygon: true,
-      drawRectangle: true,
-      drawText: false,
-      editMode: true,
-      dragMode: false,
-      cutPolygon: false,
-      rotateMode: false,
-      removalMode: true
-    });
-
-    map.pm.setGlobalOptions({
-      measurements: true
-    });
-
-    initialized.current = true;
-
-    return () => {
-      map.pm.removeControls();
-    };
-  }, [map]);
-
-  useEffect(() => {
-    const provider = new OpenStreetMapProvider();
-    const searchControl = new GeoSearchControl({
-      provider,
-      style: 'bar',
-      position: 'topleft',
-      showMarker: true,
-      showPopup: false,
-      retainZoomLevel: false,
-      animateZoom: true,
-      keepResult: true,
-      searchLabel: 'Search address…'
-    });
-
-    map.addControl(searchControl);
-
-    const container = searchControl.getContainer?.();
-    if (container) {
-      container.classList.add('geosearch-control');
-    }
-
-    return () => {
-      map.removeControl(searchControl);
-    };
-  }, [map]);
-
-  return null;
 }
