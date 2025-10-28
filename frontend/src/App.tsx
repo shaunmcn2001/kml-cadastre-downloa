@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Toaster } from '@/components/ui/sonner';
-import { Button } from '@/components/ui/button';
-import { WifiX } from '@phosphor-icons/react';
 import { ParcelInputPanel } from './components/ParcelInputPanel';
 import { MapView } from './components/MapView';
 import { ExportPanel } from './components/ExportPanel';
@@ -147,22 +145,26 @@ function App() {
             NSW • QLD • SA • VIC
           </div>
         </div>
-        <nav className="mt-4 flex flex-wrap gap-2">
+        <nav className="mt-4 inline-flex items-center space-x-1 rounded-full border bg-muted/40 p-1 text-xs">
           {[
             { key: 'cadastre', label: 'Cadastre' },
             { key: 'property-reports', label: 'Property Reports' },
             { key: 'grazing-maps', label: 'Grazing Maps' }
-          ].map(({ key, label }) => (
-            <Button
-              key={key}
-              variant={activeView === key ? 'default' : 'outline'}
-              size="sm"
-              className={activeView === key ? 'bg-primary text-primary-foreground' : ''}
-              onClick={() => setActiveView(key as typeof activeView)}
-            >
-              {label}
-            </Button>
-          ))}
+          ].map(({ key, label }) => {
+            const active = activeView === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setActiveView(key as typeof activeView)}
+                className={`px-3 py-1.5 rounded-full transition ${
+                  active ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-background'
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
         </nav>
       </header>
       {activeView === 'cadastre' && (

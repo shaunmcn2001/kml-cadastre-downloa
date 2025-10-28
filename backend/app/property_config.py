@@ -16,6 +16,7 @@ class PropertyLayer:
     where: Optional[str] = None
     name_field: Optional[str] = None
     code_field: Optional[str] = None
+    color: Optional[str] = None
 
     def metadata(self) -> dict:
         """Return a serialisable metadata payload for clients."""
@@ -24,6 +25,7 @@ class PropertyLayer:
             "label": self.label,
             "description": self.description,
             "geometryType": self.geometry_type,
+            "color": self.color,
         }
 
 
@@ -38,6 +40,7 @@ PROPERTY_REPORT_LAYERS: List[PropertyLayer] = [
         geometry_type="polygon",
         name_field="lt_name_1",
         code_field="lt_code_1",
+        color="#1d4ed8",
     ),
     PropertyLayer(
         id="vegetation",
@@ -48,6 +51,7 @@ PROPERTY_REPORT_LAYERS: List[PropertyLayer] = [
         geometry_type="polygon",
         name_field="rvm_cat",
         code_field="rvm_cat",
+        color="#16a34a",
     ),
     PropertyLayer(
         id="watercourses",
@@ -56,6 +60,7 @@ PROPERTY_REPORT_LAYERS: List[PropertyLayer] = [
         service_url="https://spatial-gis.information.qld.gov.au/arcgis/rest/services/InlandWaters/WaterCoursesAndBodies/MapServer",
         layer_id=34,
         geometry_type="polygon",
+        color="#0ea5e9",
     ),
     PropertyLayer(
         id="bores",
@@ -66,6 +71,7 @@ PROPERTY_REPORT_LAYERS: List[PropertyLayer] = [
         geometry_type="point",
         name_field="facility_status_decode",
         code_field="rn_char",
+        color="#f97316",
     ),
     PropertyLayer(
         id="easements",
@@ -76,9 +82,9 @@ PROPERTY_REPORT_LAYERS: List[PropertyLayer] = [
         geometry_type="polygon",
         name_field="parcel_typ",
         code_field="lotplan",
+        color="#a855f7",
     ),
 ]
 
 
 PROPERTY_LAYER_MAP = {layer.id: layer for layer in PROPERTY_REPORT_LAYERS}
-

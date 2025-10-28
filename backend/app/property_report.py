@@ -193,6 +193,8 @@ async def _fetch_layer_features(
         props = dict(clipped.get("properties") or {})
         props.setdefault("layer_id", layer.id)
         props.setdefault("layer_label", layer.label)
+        if layer.color:
+            props.setdefault("layer_color", layer.color)
 
         if layer.name_field and props.get(layer.name_field):
             props.setdefault("name", props.get(layer.name_field))
@@ -206,6 +208,7 @@ async def _fetch_layer_features(
         "id": layer.id,
         "label": layer.label,
         "geometryType": layer.geometry_type,
+        "color": layer.color,
         "featureCollection": {
             "type": "FeatureCollection",
             "features": features_out,

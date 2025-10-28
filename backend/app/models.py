@@ -133,12 +133,14 @@ class PropertyLayerInfo(BaseModel):
     label: str
     description: Optional[str] = None
     geometryType: str
+    color: Optional[str] = None
 
 class PropertyReportLayer(BaseModel):
     id: str
     label: str
     geometryType: str
     featureCount: int
+    color: Optional[str] = None
     featureCollection: Dict[str, Any]
 
 class PropertyReportRequest(BaseModel):

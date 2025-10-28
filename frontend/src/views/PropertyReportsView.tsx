@@ -23,6 +23,7 @@ interface ParsedLotPlanState {
 }
 
 const initialParsedState: ParsedLotPlanState = { valid: [], malformed: [] };
+const fallbackColors = ['#2563eb', '#22c55e', '#f97316', '#a855f7', '#ec4899', '#0ea5e9', '#facc15'];
 
 export function PropertyReportsView() {
   const [datasets, setDatasets] = useState<PropertyLayerMeta[]>([]);
@@ -191,27 +192,46 @@ export function PropertyReportsView() {
                 </div>
 
                 <div className="space-y-2">
-                  {datasets.map(dataset => (
-                    <div key={dataset.id} className="flex items-start gap-2">
-                      <Checkbox
-                        id={`dataset-${dataset.id}`}
-                        checked={selectAll || selectedDatasetIds.includes(dataset.id)}
-                        onCheckedChange={() => handleDatasetToggle(dataset.id)}
+                  {datasets.map((dataset, index) => {
+                    const selected = selectAll || selectedDatasetIds.includes(dataset.id);
+                    const color = dataset.color || fallbackColors[index % fallbackColors.length];
+                    return (
+                      <button
+                        key={dataset.id}
+                        type="button"
                         disabled={selectAll}
-                      />
-                      <Label htmlFor={`dataset-${dataset.id}`} className="text-xs leading-tight cursor-pointer space-y-1">
-                        <span className="font-medium text-foreground flex items-center gap-1">
-                          {dataset.label}
-                          <Badge variant="outline" className="text-[10px] px-1 py-0">
-                            {dataset.geometryType}
-                          </Badge>
-                        </span>
-                        {dataset.description && (
-                          <span className="block text-muted-foreground/80">{dataset.description}</span>
-                        )}
-                      </Label>
-                    </div>
-                  ))}
+                        onClick={() => handleDatasetToggle(dataset.id)}
+                        className={`w-full text-left rounded-xl border px-3 py-2 transition ${
+                          selected ? 'border-primary/40 bg-primary/10 shadow-sm' : 'border-border hover:bg-muted'
+                        } ${selectAll ? 'cursor-not-allowed opacity-75' : ''}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span
+                            className="inline-flex h-3.5 w-3.5 flex-shrink-0 rounded-full border"
+                            style={{ backgroundColor: color, borderColor: color, opacity: selected ? 0.85 : 0.25 }}
+                          />
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs font-medium ${selected ? 'text-foreground' : 'text-muted-foreground'}`}>
+                                {dataset.label}
+                              </span>
+                              <Badge variant="outline" className="text-[10px] px-1 py-0">
+                                {dataset.geometryType}
+                              </Badge>
+                              {selectAll && (
+                                <Badge variant="secondary" className="text-[10px] px-1 py-0">All</Badge>
+                              )}
+                            </div>
+                            {dataset.description && (
+                              <p className="text-[11px] text-muted-foreground/70 leading-tight mt-1">
+                                {dataset.description}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
 
                   {datasets.length === 0 && (
                     <p className="text-xs text-muted-foreground">Loading dataset catalogue…</p>

@@ -3,8 +3,6 @@ import { MapContainer, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { MapPin, MagnifyingGlass, XCircle } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
@@ -27,7 +25,7 @@ const basemapConfig = {
 
 type BaseLayerKey = keyof typeof basemapConfig;
 
-const layerPalette = ['#2563eb', '#22c55e', '#f97316', '#a855f7', '#ec4899', '#0ea5e9', '#facc15'];
+const fallbackPalette = ['#2563eb', '#22c55e', '#f97316', '#a855f7', '#ec4899', '#0ea5e9', '#facc15'];
 
 interface PropertyReportMapProps {
   parcels?: ParcelFeature[];
@@ -102,7 +100,7 @@ export function PropertyReportMap({ parcels, layers, layerVisibility, onToggleLa
     datasetLayersRef.current = {};
 
     layers.forEach((layer, index) => {
-      const color = layerPalette[index % layerPalette.length];
+      const color = layer.color || fallbackPalette[index % fallbackPalette.length];
       const geojsonLayer = L.geoJSON(layer.featureCollection as any, {
         style: () => ({
           color,
@@ -273,34 +271,41 @@ export function PropertyReportMap({ parcels, layers, layerVisibility, onToggleLa
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-3 mt-4">
-          {layers.map((layer, index) => (
-            <div key={layer.id} className="flex items-center space-x-2">
-              <Switch
-                id={`dataset-${layer.id}`}
-                checked={layerVisibility[layer.id] !== false}
-                onCheckedChange={() => handleLayerToggle(layer.id)}
-                className="scale-75"
-              />
-              <Label
-                htmlFor={`dataset-${layer.id}`}
-                className="text-xs flex items-center gap-1.5 cursor-pointer"
+        <div className="flex flex-col gap-2 mt-4">
+          {layers.map((layer, index) => {
+            const color = layer.color || fallbackPalette[index % fallbackPalette.length];
+            const active = layerVisibility[layer.id] !== false;
+            return (
+              <button
+                key={layer.id}
+                type="button"
+                onClick={() => handleLayerToggle(layer.id)}
+                className={`group flex items-center justify-between rounded-xl border px-3 py-2 text-left transition ${
+                  active ? 'border-primary/40 bg-primary/10 shadow-sm' : 'border-border hover:bg-muted'
+                }`}
               >
-                <div
-                  className="w-3 h-3 rounded-sm border"
-                  style={{
-                    backgroundColor: layerPalette[index % layerPalette.length],
-                    opacity: layerVisibility[layer.id] !== false ? 0.6 : 0.15,
-                    borderColor: layerPalette[index % layerPalette.length],
-                  }}
-                />
-                {layer.label}
-                <Badge variant="secondary" className="text-xs px-1.5 py-0">
+                <div className="flex items-center gap-3 pointer-events-none">
+                  <span
+                    className="inline-flex h-3.5 w-3.5 flex-shrink-0 rounded-full border"
+                    style={{
+                      backgroundColor: color,
+                      borderColor: color,
+                      opacity: active ? 0.85 : 0.25,
+                    }}
+                  />
+                  <div className="flex flex-col">
+                    <span className={`text-xs font-medium ${active ? 'text-foreground' : 'text-muted-foreground'}`}>
+                      {layer.label}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground/70">{layer.geometryType}</span>
+                  </div>
+                </div>
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 pointer-events-none">
                   {layer.featureCount}
                 </Badge>
-              </Label>
-            </div>
-          ))}
+              </button>
+            );
+          })}
         </div>
       </CardHeader>
 

@@ -68,6 +68,29 @@ def _build_style(
     return style
 
 
+def _clone_style(
+    base_style: simplekml.Style,
+    fill_override: Optional[str] = None,
+    stroke_override: Optional[str] = None,
+) -> simplekml.Style:
+    style = simplekml.Style()
+    style.polystyle.fill = base_style.polystyle.fill
+    style.polystyle.outline = base_style.polystyle.outline
+    style.polystyle.altitudemode = base_style.polystyle.altitudemode
+    style.polystyle.color = fill_override or base_style.polystyle.color
+    style.linestyle.color = stroke_override or base_style.linestyle.color
+    style.linestyle.width = base_style.linestyle.width
+    return style
+
+
+def _compose_kml_color(hex_color: str, alpha_hex: str = "ff") -> str:
+    color = hex_color.lstrip('#')
+    if len(color) != 6:
+        return f"{alpha_hex}0000ff"
+    red, green, blue = color[0:2], color[2:4], color[4:6]
+    return f"{alpha_hex}{blue.lower()}{green.lower()}{red.lower()}"
+
+
 def _calculate_area_hectares(geom) -> Optional[float]:
     try:
         area, _ = _GEOD.geometry_area_perimeter(geom)
@@ -276,8 +299,14 @@ def _add_features_to_container(container, features: List[Feature], style):
         placemark.snippet.content = ""
         placemark.description = ""
 
-        # Apply style
-        placemark.style = style
+        layer_color = getattr(props, "layer_color", None) or getattr(props, "color", None)
+        if layer_color:
+            base_alpha = style.polystyle.color[:2] if style.polystyle.color else "ff"
+            fill_override = _compose_kml_color(layer_color, base_alpha)
+            stroke_override = _compose_kml_color(layer_color, "ff")
+            placemark.style = _clone_style(style, fill_override=fill_override, stroke_override=stroke_override)
+        else:
+            placemark.style = _clone_style(style)
 
     for feature in features:
         try:
@@ -312,10 +341,11 @@ def _add_features_to_container(container, features: List[Feature], style):
                 if not coords:
                     continue
 
-                multigeom = container.newmultigeometry()
+                multigeom = container.newmultigeometry(name=desired_name)
                 _apply_common_metadata(multigeom, props, desired_name)
 
-                for poly_coords in coords:
+                total_parts = len(coords)
+                for index, poly_coords in enumerate(coords, start=1):
                     if not poly_coords:
                         continue
 
@@ -324,8 +354,10 @@ def _add_features_to_container(container, features: List[Feature], style):
                     if len(poly_coords) > 1:
                         child_poly.innerboundaryis = [inner for inner in poly_coords[1:] if inner]
 
-                    # Apply consistent styling to child polygons
-                    child_poly.style = style
+                    part_name = (
+                        f"{desired_name} (Part {index})" if total_parts > 1 else desired_name
+                    )
+                    _apply_common_metadata(child_poly, props, part_name)
 
             else:
                 logger.warning(
