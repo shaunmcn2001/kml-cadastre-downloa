@@ -242,7 +242,12 @@ export function MapView({ features, isLoading }: MapViewProps) {
                 <MagnifyingGlass className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
+                  onChange={(event) => {
+                    setSearchTerm(event.target.value);
+                    if (searchError) {
+                      setSearchError(null);
+                    }
+                  }}
                   placeholder="Search address or place"
                   className="h-8 w-[200px] pl-7 text-xs"
                 />
@@ -261,6 +266,11 @@ export function MapView({ features, isLoading }: MapViewProps) {
                 {isSearching ? 'Searching…' : 'Go'}
               </Button>
             </form>
+            {searchError && (
+              <p className="text-[11px] text-destructive/90">
+                {searchError}
+              </p>
+            )}
           </div>
         </div>
 
@@ -300,47 +310,47 @@ export function MapView({ features, isLoading }: MapViewProps) {
 
       <CardContent className="flex-1 p-0 relative min-h-[480px]">
         <div className="absolute inset-0 rounded-b-lg overflow-hidden">
-          {filteredFeatures.length > 0 ? (
-            <MapContainer
-              center={[-27.4705, 133.0000]}
-              zoom={6}
-              className="h-full w-full"
-              zoomControl={true}
-              whenCreated={(mapInstance) => {
-                mapRef.current = mapInstance;
-              }}
-              style={{ background: 'transparent' }}
-            >
+          <MapContainer
+            center={[-27.4705, 133.0000]}
+            zoom={6}
+            className="h-full w-full"
+            zoomControl={true}
+            whenCreated={(mapInstance) => {
+              mapRef.current = mapInstance;
+            }}
+            style={{ background: 'transparent' }}
+          >
+            <TileLayer
+              key={baseLayer}
+              attribution={basemapConfig[baseLayer].attribution}
+              url={basemapConfig[baseLayer].url}
+            />
+            {baseLayer === 'satellite' && (
               <TileLayer
-                key={baseLayer}
-                attribution={basemapConfig[baseLayer].attribution}
-                url={basemapConfig[baseLayer].url}
+                key="satellite-labels"
+                opacity={0.7}
+                attribution="Boundaries © Esri"
+                url="https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
               />
-              {baseLayer === 'satellite' && (
-                <TileLayer
-                  key="satellite-labels"
-                  opacity={0.7}
-                  attribution="Boundaries © Esri"
-                  url="https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
-                />
-              )}
-              <GeoJSON 
-                key={`${filteredFeatures.length}-${Object.values(layerVisibility).join()}`}
-                data={{
-                  type: 'FeatureCollection',
-                  features: filteredFeatures
-                }}
-                onEachFeature={onEachFeature}
-              />
-              <MapUpdater features={filteredFeatures} />
-            </MapContainer>
-          ) : (
-            <div className="flex items-center justify-center h-full bg-muted/20 rounded-b-lg">
+            )}
+            <GeoJSON
+              key={`${filteredFeatures.length}-${Object.values(layerVisibility).join()}`}
+              data={{
+                type: 'FeatureCollection',
+                features: filteredFeatures
+              }}
+              onEachFeature={onEachFeature}
+            />
+            <MapUpdater features={filteredFeatures} />
+          </MapContainer>
+
+          {filteredFeatures.length === 0 && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-muted/15 backdrop-blur-sm">
               <div className="text-center text-muted-foreground">
                 <MapPin className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No parcel data to display</p>
-                <p className="text-xs mt-1">Query parcels to see them on the map</p>
-                <p className="text-xs mt-2 italic">Compatible with Google Earth Pro & Web</p>
+                <p className="text-sm font-medium">No parcel data to display</p>
+                <p className="text-xs text-muted-foreground/70">Query parcels to see them on the map</p>
+                <p className="text-[11px] text-muted-foreground/60 mt-1">Compatible with Google Earth Pro & Web</p>
               </div>
             </div>
           )}

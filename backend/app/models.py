@@ -128,6 +128,28 @@ class ExportRequest(BaseModel):
     styleOptions: Optional[StyleOptions] = None
     fileName: Optional[str] = None
 
+class PropertyLayerInfo(BaseModel):
+    id: str
+    label: str
+    description: Optional[str] = None
+    geometryType: str
+
+class PropertyReportLayer(BaseModel):
+    id: str
+    label: str
+    geometryType: str
+    featureCount: int
+    featureCollection: Dict[str, Any]
+
+class PropertyReportRequest(BaseModel):
+    lotPlans: List[str]
+    layers: Optional[List[str]] = None
+
+class PropertyReportResponse(BaseModel):
+    lotPlans: List[str]
+    parcelFeatures: Dict[str, Any]
+    layers: List[PropertyReportLayer]
+
 class ErrorResponse(BaseModel):
     error: str
     detail: Optional[str] = None

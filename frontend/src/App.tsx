@@ -11,12 +11,15 @@ import { loadConfig } from './lib/config';
 import { apiClient } from './lib/api';
 import { toast } from 'sonner';
 import type { ParcelFeature, ParcelState } from './lib/types';
+import { PropertyReportsView } from './views/PropertyReportsView';
+import { ComingSoonView } from './views/ComingSoonView';
 
 function App() {
   const [features, setFeatures] = useState<ParcelFeature[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isQuerying, setIsQuerying] = useState(false);
   const [backendError, setBackendError] = useState<string | null>(null);
+  const [activeView, setActiveView] = useState<'cadastre' | 'property-reports' | 'grazing-maps'>('cadastre');
 
   const testBackendConnection = async () => {
     try {
@@ -141,37 +144,63 @@ function App() {
             <p className="text-xs text-muted-foreground mt-0.5">Optimized for Google Earth Web & Pro</p>
           </div>
           <div className="text-xs text-muted-foreground">
-            NSW • QLD • SA
+            NSW • QLD • SA • VIC
           </div>
         </div>
+        <nav className="mt-4 flex flex-wrap gap-2">
+          {[
+            { key: 'cadastre', label: 'Cadastre' },
+            { key: 'property-reports', label: 'Property Reports' },
+            { key: 'grazing-maps', label: 'Grazing Maps' }
+          ].map(({ key, label }) => (
+            <Button
+              key={key}
+              variant={activeView === key ? 'default' : 'outline'}
+              size="sm"
+              className={activeView === key ? 'bg-primary text-primary-foreground' : ''}
+              onClick={() => setActiveView(key as typeof activeView)}
+            >
+              {label}
+            </Button>
+          ))}
+        </nav>
       </header>
-      <div className="flex-1 flex overflow-hidden">
-        {/* Map View - Left Side */}
-        <div className="flex-1 p-4">
-          <MapView features={features} isLoading={isQuerying} />
-        </div>
+      {activeView === 'cadastre' && (
+        <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 p-4">
+            <MapView features={features} isLoading={isQuerying} />
+          </div>
 
-        {/* Control Panel - Right Side */}
-        <div className="w-96 border-l bg-card flex flex-col max-h-full">
-          <div className="flex-1 overflow-y-auto scrollbar-thin">
-            <div className="p-4 space-y-6">
-              <ParcelInputPanel 
-                onQueryParcels={handleQueryParcels}
-                isQuerying={isQuerying}
-              />
+          <div className="w-96 border-l bg-card flex flex-col max-h-full">
+            <div className="flex-1 overflow-y-auto scrollbar-thin">
+              <div className="p-4 space-y-6">
+                <ParcelInputPanel 
+                  onQueryParcels={handleQueryParcels}
+                  isQuerying={isQuerying}
+                />
 
-              <ExportPanel 
-                features={features}
-                isQuerying={isQuerying}
-              />
+                <ExportPanel 
+                  features={features}
+                  isQuerying={isQuerying}
+                />
+              </div>
+            </div>
+
+            <div className="border-t bg-card flex-shrink-0">
+              <DebugPanel />
             </div>
           </div>
-
-          <div className="border-t bg-card flex-shrink-0">
-            <DebugPanel />
-          </div>
         </div>
-      </div>
+      )}
+
+      {activeView === 'property-reports' && <PropertyReportsView />}
+
+      {activeView === 'grazing-maps' && (
+        <ComingSoonView
+          title="Grazing Maps"
+          description="Layer selections and grazing-specific analytics will live here."
+        />
+      )}
       <Toaster />
     </div>
   );

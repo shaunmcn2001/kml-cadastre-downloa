@@ -54,6 +54,30 @@ export interface QueryResponse {
   features: ParcelFeature[];
 }
 
+export interface PropertyLayerMeta {
+  id: string;
+  label: string;
+  description?: string;
+  geometryType: string;
+}
+
+export interface PropertyReportLayerResult {
+  id: string;
+  label: string;
+  geometryType: string;
+  featureCount: number;
+  featureCollection: {
+    type: 'FeatureCollection';
+    features: ParcelFeature[];
+  };
+}
+
+export interface PropertyReportResponse {
+  lotPlans: string[];
+  parcelFeatures: QueryResponse;
+  layers: PropertyReportLayerResult[];
+}
+
 export interface ParcelSearchRequest {
   state: ParcelState;
   term: string;

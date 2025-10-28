@@ -8,7 +8,10 @@ import type {
   ParcelSearchRequest,
   ParcelSearchResponse,
   ApiError,
-  DebugEntry
+  DebugEntry,
+  PropertyLayerMeta,
+  PropertyReportRequest,
+  PropertyReportResponse
 } from './types';
 
 class ApiClient {
@@ -137,6 +140,14 @@ class ApiClient {
 
   async healthCheck(): Promise<{ status: string }> {
     return this.makeRequest<{ status: string }>('GET', '/healthz');
+  }
+
+  async listPropertyLayers(): Promise<PropertyLayerMeta[]> {
+    return this.makeRequest<PropertyLayerMeta[]>('GET', '/api/property-report/layers');
+  }
+
+  async queryPropertyReport(request: PropertyReportRequest): Promise<PropertyReportResponse> {
+    return this.makeRequest<PropertyReportResponse>('POST', '/api/property-report/query', request);
   }
 
   getDebugEntries(): DebugEntry[] {

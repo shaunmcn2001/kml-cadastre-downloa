@@ -8,11 +8,13 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
 import uvicorn
+import httpx
 
 from .models import (
     ParseRequest, ParseResponse, QueryRequest, FeatureCollection,
     ExportRequest, ErrorResponse, HealthResponse, ParcelState,
-    SearchRequest, SearchResult
+    SearchRequest, SearchResult,
+    PropertyLayerInfo, PropertyReportRequest, PropertyReportResponse
 )
 from .parsers import parse_parcel_input
 from .arcgis import query_parcels_bulk, ArcGISClient, ArcGISError
@@ -23,6 +25,7 @@ from .exports.tiff import export_geotiff
 from .utils.logging import setup_logging, get_logger
 from .utils.cache import get_cache
 from .utils.rate_limit import get_rate_limiter
+from .property_report import generate_property_report, list_property_layers
 
 # Environment configuration
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
@@ -181,6 +184,39 @@ async def health_check():
         timestamp=datetime.utcnow().isoformat(),
         version="1.0.0"
     )
+
+@app.get("/api/property-report/layers", response_model=List[PropertyLayerInfo])
+async def property_report_layers() -> List[PropertyLayerInfo]:
+    """Return metadata for all available property-report datasets."""
+    return [PropertyLayerInfo(**layer) for layer in list_property_layers()]
+
+
+@app.post("/api/property-report/query", response_model=PropertyReportResponse)
+async def property_report_query(request: PropertyReportRequest, req: Request):
+    """Generate property report datasets for a set of QLD lotplans."""
+    client_ip = req.client.host if req.client else "unknown"
+    if not rate_limiter.is_allowed(client_ip):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+
+    try:
+        result = await generate_property_report(
+            request.lotPlans,
+            request.layers or [],
+            timeout=ARCGIS_TIMEOUT,
+            max_ids_per_chunk=MAX_IDS_PER_CHUNK,
+        )
+        return PropertyReportResponse(**result)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except ArcGISError as exc:
+        logger.error("Property report ArcGIS failure: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc))
+    except httpx.HTTPError as exc:  # type: ignore[name-defined]
+        logger.error("HTTP error querying property datasets: %s", exc)
+        raise HTTPException(status_code=502, detail="Failed to query property datasets")
+    except Exception as exc:
+        logger.error("Property report generation failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to generate property report")
 
 
 @app.get("/ui", response_class=HTMLResponse)
