@@ -15,9 +15,12 @@ interface PropertyReportExportPanelProps {
 function buildExportFeatures(report: PropertyReportResponse, visibleLayers: Record<string, boolean>): ParcelFeature[] {
   const features: ParcelFeature[] = [];
 
-  const addFeature = (feature: any, fallbackName: string): void => {
+  const addFeature = (feature: any, fallbackName: string, layerColor?: string): void => {
     if (!feature?.geometry) return;
     const props = { ...(feature.properties || {}) };
+    if (layerColor && !props.layer_color) {
+      props.layer_color = layerColor;
+    }
     const id = props.id || props.lotplan || props.code || fallbackName;
     const name = props.name || props.code || fallbackName;
     props.id = id;
@@ -45,7 +48,7 @@ function buildExportFeatures(report: PropertyReportResponse, visibleLayers: Reco
       const props = feature.properties || {};
       props.layer_label = layer.label;
       props.layer_id = layer.id;
-      addFeature({ ...feature, properties: props }, fallback);
+      addFeature({ ...feature, properties: props }, fallback, layer.color);
     });
   });
 

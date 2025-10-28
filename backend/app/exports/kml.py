@@ -1,5 +1,6 @@
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
+import html
 
 import simplekml
 from pyproj import Geod
@@ -216,7 +217,7 @@ def export_kml(features: List[Feature], style_options: StyleOptions = None) -> s
                 style_options,
             )
 
-            _add_features_to_container(folder, state_features, style)
+            _add_grouped_features(folder, state_features, style)
     elif style_options.folderName:
         # Single custom folder for all features, styled by state but in one folder
         folder = kml.newfolder(name=style_options.folderName.strip())
@@ -237,7 +238,7 @@ def export_kml(features: List[Feature], style_options: StyleOptions = None) -> s
                     style_options,
                 )
 
-                _add_features_to_container(folder, state_features, style)
+                _add_grouped_features(folder, state_features, style)
         else:
             # Single style for all features in custom folder
             fill_override = None
@@ -254,7 +255,7 @@ def export_kml(features: List[Feature], style_options: StyleOptions = None) -> s
                 stroke_override=stroke_override,
             )
 
-            _add_features_to_container(folder, merged_features, style)
+            _add_grouped_features(folder, merged_features, style)
     else:
         # Single style for all features
         fill_override = None
@@ -271,7 +272,7 @@ def export_kml(features: List[Feature], style_options: StyleOptions = None) -> s
             stroke_override=stroke_override,
         )
 
-        _add_features_to_container(kml, merged_features, style)
+        _add_grouped_features(kml, merged_features, style)
 
     logger.info("KML export completed successfully")
     return kml.kml()
@@ -293,11 +294,56 @@ def _display_name_from_props(props) -> str:
 def _add_features_to_container(container, features: List[Feature], style):
     """Add features to KML container with given style."""
 
+    def _format_description(props) -> str:
+        data = props.__dict__.copy()
+        lines: List[str] = []
+
+        layer_label = data.get("layer_label") or data.get("layer")
+        title = data.get("name") or layer_label or data.get("id")
+        if title:
+            lines.append(f"<div class='kml-title'><strong>{html.escape(str(title))}</strong></div>")
+
+        def add_row(label: str, value_key: str, formatter=lambda v: v):
+            value = data.get(value_key)
+            if value is None or value == "":
+                return
+            if isinstance(value, float):
+                value_text = formatter(value)
+            else:
+                value_text = formatter(value)
+            value_text = str(value_text)
+            if not value_text:
+                return
+            lines.append(
+                f"<div class='kml-row'><span class='kml-label'>{html.escape(label)}:</span> {html.escape(value_text)}</div>"
+            )
+
+        add_row("Lot/Plan", "lotplan")
+        add_row("Parcel ID", "id")
+        add_row("Layer", "layer_label")
+        add_row("Code", "code")
+        add_row("Area (ha)", "area_ha", lambda v: f"{float(v):.2f}")
+        add_row("Status", "status_label")
+        add_row("Type", "type_label")
+        add_row("Drilled", "drilled_date")
+
+        report_url = data.get("report_url") or data.get("bore_report_url")
+        if report_url:
+            link = html.escape(str(report_url))
+            lines.append(
+                f"<div class='kml-row'><span class='kml-label'>Report:</span> <a href='{link}' target='_blank'>{link}</a></div>"
+            )
+
+        if not lines:
+            return ""
+        body = "".join(lines)
+        return f"<![CDATA[<div class='kml-popup'>{body}</div>]]>"
+
     def _apply_common_metadata(placemark, props, desired_name: str):
         placemark.name = desired_name        # override any upstream props.name
         placemark.snippet.maxlines = 0       # hide grey line in Places panel
         placemark.snippet.content = ""
-        placemark.description = ""
+        placemark.description = _format_description(props)
 
         layer_color = getattr(props, "layer_color", None) or getattr(props, "color", None)
         if layer_color:
@@ -367,6 +413,28 @@ def _add_features_to_container(container, features: List[Feature], style):
         except Exception as e:
             logger.warning(f"Failed to add feature {getattr(feature.properties, 'id', 'unknown')} to KML: {e}")
             continue
+
+
+def _add_grouped_features(container, features: List[Feature], style):
+    groups: Dict[str, List[Feature]] = defaultdict(list)
+    for feature in features:
+        layer_label = getattr(feature.properties, "layer_label", None)
+        key = layer_label or "_default"
+        groups[key].append(feature)
+
+    if not groups:
+        return
+
+    if len(groups) == 1 and "_default" in groups:
+        _add_features_to_container(container, groups["_default"], style)
+        return
+
+    for label, group_features in groups.items():
+        if label == "_default":
+            folder = container.newfolder(name="Parcels")
+        else:
+            folder = container.newfolder(name=label)
+        _add_features_to_container(folder, group_features, style)
 
 
 def _create_popup_description(properties) -> str:
