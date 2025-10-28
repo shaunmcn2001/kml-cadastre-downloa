@@ -191,7 +191,7 @@ export function PropertyReportsView() {
                   <Label htmlFor="select-all-datasets" className="text-xs">Select all datasets</Label>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {datasets.map((dataset, index) => {
                     const selected = selectAll || selectedDatasetIds.includes(dataset.id);
                     const color = dataset.color || fallbackColors[index % fallbackColors.length];
@@ -201,29 +201,31 @@ export function PropertyReportsView() {
                         type="button"
                         disabled={selectAll}
                         onClick={() => handleDatasetToggle(dataset.id)}
-                        className={`w-full text-left rounded-xl border px-3 py-2 transition ${
-                          selected ? 'border-primary/40 bg-primary/10 shadow-sm' : 'border-border hover:bg-muted'
+                        className={`w-full text-left rounded-2xl border px-4 py-3 transition-all ${
+                          selected
+                            ? 'border-primary/50 bg-primary/10 shadow-lg shadow-primary/10'
+                            : 'border-border bg-background hover:border-primary/30 hover:bg-muted/60'
                         } ${selectAll ? 'cursor-not-allowed opacity-75' : ''}`}
                       >
                         <div className="flex items-center gap-3">
                           <span
-                            className="inline-flex h-3.5 w-3.5 flex-shrink-0 rounded-full border"
-                            style={{ backgroundColor: color, borderColor: color, opacity: selected ? 0.85 : 0.25 }}
+                            className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border-4 border-background text-xs font-semibold text-white shadow-inner"
+                            style={{ backgroundColor: color, opacity: selected ? 0.95 : 0.25 }}
                           />
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
-                              <span className={`text-xs font-medium ${selected ? 'text-foreground' : 'text-muted-foreground'}`}>
+                              <span className={`text-sm font-semibold ${selected ? 'text-foreground' : 'text-muted-foreground'}`}>
                                 {dataset.label}
                               </span>
-                              <Badge variant="outline" className="text-[10px] px-1 py-0">
+                              <span className="rounded-full border border-border/60 bg-background/80 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground/80">
                                 {dataset.geometryType}
-                              </Badge>
+                              </span>
                               {selectAll && (
                                 <Badge variant="secondary" className="text-[10px] px-1 py-0">All</Badge>
                               )}
                             </div>
                             {dataset.description && (
-                              <p className="text-[11px] text-muted-foreground/70 leading-tight mt-1">
+                              <p className="mt-2 text-[11px] leading-snug text-muted-foreground/70">
                                 {dataset.description}
                               </p>
                             )}

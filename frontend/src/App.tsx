@@ -165,7 +165,7 @@ function App() {
   return (
     <div className="h-screen flex flex-col bg-background">
       <header className="border-b bg-card px-6 py-4">
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-6">
           <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="text-center sm:text-left">
               <h1 className="text-2xl font-semibold tracking-tight text-foreground">Praedia</h1>
@@ -177,32 +177,35 @@ function App() {
               NSW • QLD • SA • VIC
             </div>
           </div>
-          <nav className="flex justify-center">
-            <div className="relative inline-flex items-center rounded-full bg-muted/30 px-1 py-1 shadow-inner">
-              <span
-                ref={navIndicatorRef}
-                className="pointer-events-none absolute top-1 bottom-1 left-0 rounded-full bg-primary shadow transition-all duration-300 ease-out"
-                style={{ width: 0, transform: 'translateX(0px)' }}
-                aria-hidden="true"
-              />
-              {navItems.map(({ key, label }) => {
-                const active = activeView === key;
-                return (
-                  <button
-                    key={key}
-                    ref={(element) => {
-                      navButtonRefs.current[key] = element;
-                    }}
-                    type="button"
-                    onClick={() => setActiveView(key)}
-                    className={`relative z-10 rounded-full px-4 py-1.5 text-sm font-medium transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 ${active ? 'text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                    aria-pressed={active}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
+          <nav className="relative flex justify-center">
+            <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-6 sm:-translate-y-8">
+              <div className="relative inline-flex items-center rounded-full bg-muted/20 px-1 py-1 shadow-lg shadow-primary/20 backdrop-blur">
+                <span
+                  ref={navIndicatorRef}
+                  className="pointer-events-none absolute top-1 bottom-1 left-0 rounded-full bg-primary shadow transition-all duration-300 ease-out"
+                  style={{ width: 0, transform: 'translateX(0px)' }}
+                  aria-hidden="true"
+                />
+                {navItems.map(({ key, label }) => {
+                  const active = activeView === key;
+                  return (
+                    <button
+                      key={key}
+                      ref={(element) => {
+                        navButtonRefs.current[key] = element;
+                      }}
+                      type="button"
+                      onClick={() => setActiveView(key)}
+                      className={`relative z-10 rounded-full px-5 py-1.5 text-sm font-medium transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 ${active ? 'text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                      aria-pressed={active}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
+            <div className="h-8" aria-hidden="true" />
           </nav>
         </div>
       </header>

@@ -229,6 +229,18 @@ export function PropertyReportMap({ parcels, layers, layerVisibility, onToggleLa
     }
   };
 
+  const badgeEntries = useMemo(
+    () =>
+      layers.map((layer, index) => ({
+        id: layer.id,
+        label: layer.label,
+        geometryType: layer.geometryType,
+        color: layer.color || fallbackPalette[index % fallbackPalette.length],
+        active: layerVisibility[layer.id] !== false,
+      })),
+    [layers, layerVisibility]
+  );
+
   return (
     <Card className="h-full flex flex-col min-h-[520px]">
       <CardHeader className="pb-3">
@@ -329,6 +341,37 @@ export function PropertyReportMap({ parcels, layers, layerVisibility, onToggleLa
 
       <CardContent className="flex-1 p-0 flex flex-col">
         <div className="relative flex-1 min-h-[480px] overflow-hidden rounded-b-lg">
+          {badgeEntries.length > 0 && (
+            <div className="pointer-events-none absolute left-4 right-4 top-4 z-[401] flex flex-wrap gap-3 sm:left-6 sm:right-6">
+              {badgeEntries.map(entry => (
+                <div
+                  key={entry.id}
+                  className={`pointer-events-auto flex flex-1 min-w-[180px] items-center justify-between rounded-2xl border px-4 py-3 shadow-sm transition ${
+                    entry.active ? 'border-primary/30 bg-background/90' : 'border-border bg-muted/70'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span
+                      className="inline-flex h-4 w-4 rounded-full border-2 border-white shadow"
+                      style={{
+                        backgroundColor: entry.color,
+                        opacity: entry.active ? 0.95 : 0.25,
+                      }}
+                    />
+                    <div className="flex flex-col">
+                      <span className={`text-sm font-medium ${entry.active ? 'text-foreground' : 'text-muted-foreground'}`}>
+                        {entry.label}
+                      </span>
+                      <span className="text-[11px] uppercase tracking-wide text-muted-foreground/70">{entry.geometryType}</span>
+                    </div>
+                  </div>
+                  <Badge variant="secondary" className="text-[10px] px-2 py-0">
+                    {entry.active ? 'Visible' : 'Hidden'}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
           <MapContainer
             center={[-23.5, 146.3]}
             zoom={6}
