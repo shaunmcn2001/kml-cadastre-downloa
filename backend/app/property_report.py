@@ -1,8 +1,10 @@
 import asyncio
+import datetime as dt
 import json
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import httpx
+from pyproj import Geod
 from shapely.geometry import GeometryCollection, shape, mapping
 from shapely.ops import unary_union
 
@@ -13,6 +15,8 @@ from .property_config import PROPERTY_LAYER_MAP, PROPERTY_REPORT_LAYERS, Propert
 from .utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+_GEOD = Geod(ellps="WGS84")
 
 
 class LotPlanNormalizationError(ValueError):
@@ -36,6 +40,202 @@ def _dedupe_preserve_order(values: Iterable[str]) -> List[str]:
         seen.add(value)
         ordered.append(value)
     return ordered
+
+
+def _clean_text(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _safe_float(value: Any) -> Optional[float]:
+    if value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        text = str(value).replace(",", "").strip()
+        return float(text) if text else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalise_single_lotplan(candidate: Optional[str]) -> Optional[str]:
+    if not candidate:
+        return None
+    valid, _ = parse_qld(str(candidate))
+    if valid:
+        return valid[0].id
+    cleaned = _clean_text(candidate).upper()
+    return cleaned or None
+
+
+def _normalize_bore_number(value: Any) -> str:
+    if value is None:
+        return ""
+    return "".join(ch for ch in str(value).strip() if ch.isalnum()).upper()
+
+
+def _normalize_bore_drill_date(value: Any) -> Optional[str]:
+    if value in (None, ""):
+        return None
+    if isinstance(value, dt.datetime):
+        return value.date().isoformat()
+    if isinstance(value, dt.date):
+        return value.isoformat()
+    if isinstance(value, (int, float)):
+        try:
+            return dt.datetime.utcfromtimestamp(float(value) / 1000.0).date().isoformat()
+        except (OSError, OverflowError, ValueError):
+            return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            parsed = dt.datetime.fromisoformat(text)
+            if parsed.tzinfo:
+                parsed = parsed.astimezone(dt.timezone.utc)
+            return parsed.date().isoformat()
+        except ValueError:
+            return text
+    return None
+
+
+def _normalise_bore_properties(raw: Dict[str, Any]) -> Dict[str, Any]:
+    props = raw or {}
+    bore_number = _normalize_bore_number(
+        props.get("bore_number")
+        or props.get("rn_char")
+        or props.get("rn")
+        or props.get("facility_id")
+    )
+    status_code = _clean_text(
+        props.get("status")
+        or props.get("status_code")
+        or props.get("facility_status")
+    )
+    status_label = _clean_text(
+        props.get("status_label")
+        or props.get("statusLabel")
+        or props.get("facility_status_decode")
+    )
+    type_code = _clean_text(
+        props.get("type")
+        or props.get("type_code")
+        or props.get("facility_type")
+    )
+    type_label = _clean_text(
+        props.get("type_label")
+        or props.get("typeLabel")
+        or props.get("facility_type_decode")
+    )
+    drilled = _normalize_bore_drill_date(
+        props.get("drilled_date")
+        or props.get("drill_date")
+        or props.get("date_drill")
+    )
+    report_url = _clean_text(
+        props.get("report_url")
+        or props.get("bore_report_url")
+        or props.get("geology_url")
+    )
+
+    merged: Dict[str, Any] = {}
+    if bore_number:
+        merged["bore_number"] = bore_number
+        merged.setdefault("name", bore_number)
+        merged.setdefault("display_name", bore_number)
+    if status_code:
+        merged["status"] = status_code
+    if status_label:
+        merged["status_label"] = status_label
+    if type_code:
+        merged["type"] = type_code
+    if type_label:
+        merged["type_label"] = type_label
+    if drilled:
+        merged["drilled_date"] = drilled
+    if report_url:
+        merged["report_url"] = report_url
+    return merged
+
+
+def _normalise_easement_properties(raw: Dict[str, Any], fallback_lotplan: Optional[str]) -> Dict[str, Any]:
+    props = raw or {}
+    owner_lp = (
+        _normalise_single_lotplan(
+            props.get("lotplan")
+            or props.get("lot_plan")
+            or props.get("parcel_lotplan")
+        )
+        or fallback_lotplan
+    )
+
+    alias = _clean_text(
+        props.get("alias")
+        or props.get("feat_alias")
+        or props.get("feature_alias")
+    )
+    parcel_type = _clean_text(
+        props.get("parcel_type")
+        or props.get("parcel_typ")
+    )
+    tenure = _clean_text(
+        props.get("tenure")
+        or props.get("tenure_type")
+    )
+
+    area_m2 = _safe_float(
+        props.get("area_m2")
+        or props.get("lot_area_m2")
+        or props.get("shape_area")
+    )
+
+    merged: Dict[str, Any] = {}
+    if owner_lp:
+        merged["lotplan"] = owner_lp
+    if alias:
+        merged["alias"] = alias
+    if parcel_type:
+        merged["parcel_type"] = parcel_type
+    if tenure:
+        merged["tenure"] = tenure
+    if area_m2 is not None:
+        merged["area_m2"] = area_m2
+        merged["area_ha"] = area_m2 / 10000.0
+    return merged
+
+
+def _normalise_water_properties(raw: Dict[str, Any], layer: PropertyLayer, lotplan_label: Optional[str]) -> Dict[str, Any]:
+    props = raw or {}
+    display_name = (
+        props.get("display_name")
+        or props.get("name")
+        or props.get("feature_name")
+        or props.get("water_name")
+        or layer.label
+    )
+    merged: Dict[str, Any] = {}
+    merged["display_name"] = _clean_text(display_name) or layer.label
+    merged.setdefault("name", merged["display_name"])
+    merged["layer_title"] = layer.label
+    merged["source_layer_name"] = props.get("source_layer_name") or layer.service_url.rsplit("/", 1)[-1]
+    if lotplan_label:
+        merged["lotplan"] = lotplan_label
+    return merged
+
+
+def _calculate_area_hectares(shapely_geom) -> Optional[float]:
+    if shapely_geom is None or shapely_geom.is_empty:
+        return None
+    try:
+        area, _ = _GEOD.geometry_area_perimeter(shapely_geom)
+    except Exception as exc:
+        logger.debug("Failed to compute area: %s", exc)
+        return None
+    return abs(area) / 10000.0 if area else None
+
 
 
 async def _fetch_parcels(
@@ -143,24 +343,36 @@ def _clip_feature_to_union(feature: Dict[str, Any], layer: PropertyLayer, parcel
     if layer.geometry_type == "point":
         if not parcel_union.contains(shapely_geom):
             return None
-        return feature
-
-    clipped = shapely_geom.intersection(parcel_union)
-    if clipped.is_empty:
-        return None
-
-    if isinstance(clipped, GeometryCollection):
-        geoms = [
-            g
-            for g in clipped.geoms
-            if not g.is_empty and g.geom_type.lower().startswith(layer.geometry_type[:3])
-        ]
-        if not geoms:
+        area_ha = None
+    else:
+        clipped = shapely_geom.intersection(parcel_union)
+        if clipped.is_empty:
             return None
-        clipped = unary_union(geoms)
+
+        if isinstance(clipped, GeometryCollection):
+            geoms = [
+                g
+                for g in clipped.geoms
+                if not g.is_empty and g.geom_type.lower().startswith(layer.geometry_type[:3])
+            ]
+            if not geoms:
+                return None
+            clipped = unary_union(geoms)
+
+        shapely_geom = clipped
+        area_ha = _calculate_area_hectares(shapely_geom) if layer.geometry_type == "polygon" else None
 
     feature = dict(feature)
-    feature["geometry"] = mapping(clipped)
+    props = dict(feature.get("properties") or {})
+    if area_ha is not None:
+        props.setdefault("area_ha", area_ha)
+        props.setdefault("area_m2", area_ha * 10000.0)
+    feature["properties"] = props
+
+    if layer.geometry_type == "point":
+        feature["geometry"] = geom_dict
+    else:
+        feature["geometry"] = mapping(shapely_geom)
     return feature
 
 
@@ -169,6 +381,7 @@ async def _fetch_layer_features(
     layer: PropertyLayer,
     parcel_union,
     envelope: Dict[str, Any],
+    lotplans: Sequence[str],
 ) -> Dict[str, Any]:
     params = {
         "f": "geojson",
@@ -184,6 +397,8 @@ async def _fetch_layer_features(
 
     fc = await _arcgis_geojson_query(client, layer, params)
     features_out: List[Dict[str, Any]] = []
+    lotplan_label = ", ".join(lotplans)
+    primary_lotplan = lotplans[0] if lotplans else None
 
     for feature in fc.get("features", []):
         clipped = _clip_feature_to_union(feature, layer, parcel_union)
@@ -193,6 +408,7 @@ async def _fetch_layer_features(
         props = dict(clipped.get("properties") or {})
         props.setdefault("layer_id", layer.id)
         props.setdefault("layer_label", layer.label)
+        props.setdefault("geometry_type", layer.geometry_type)
         if layer.color:
             props.setdefault("layer_color", layer.color)
 
@@ -200,6 +416,20 @@ async def _fetch_layer_features(
             props.setdefault("name", props.get(layer.name_field))
         if layer.code_field and props.get(layer.code_field):
             props.setdefault("code", props.get(layer.code_field))
+
+        if lotplan_label:
+            props.setdefault("lotplan", lotplan_label)
+
+        if layer.id == "bores":
+            props.update(_normalise_bore_properties(props))
+        elif layer.id == "easements":
+            props.update(_normalise_easement_properties(props, primary_lotplan))
+        elif layer.id == "watercourses":
+            props.update(_normalise_water_properties(props, layer, lotplan_label))
+        else:
+            display_name = props.get("name") or props.get("code")
+            if display_name:
+                props.setdefault("display_name", _clean_text(display_name))
 
         clipped["properties"] = props
         features_out.append(clipped)
@@ -258,7 +488,7 @@ async def generate_property_report(
     if active_layers:
         async with httpx.AsyncClient(timeout=timeout) as client:
             tasks = [
-                _fetch_layer_features(client, layer, parcel_union, envelope)
+                _fetch_layer_features(client, layer, parcel_union, envelope, lotplans)
                 for layer in active_layers
             ]
             layer_results = await asyncio.gather(*tasks)

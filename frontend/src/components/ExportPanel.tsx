@@ -383,7 +383,7 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
             <Button
               onClick={() => {
                 try {
-                  const testContent = `Test download from KML Downloads app\nTimestamp: ${new Date().toISOString()}\nFeatures loaded: ${features.length}`;
+                  const testContent = `Test download from Praedia\nTimestamp: ${new Date().toISOString()}\nFeatures loaded: ${features.length}`;
                   const testBlob = new Blob([testContent], { type: 'text/plain' });
                   const success = downloadFile(testBlob, 'download-test.txt');
                   if (success) {

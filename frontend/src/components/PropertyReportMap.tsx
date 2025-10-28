@@ -166,6 +166,23 @@ export function PropertyReportMap({ parcels, layers, layerVisibility, onToggleLa
     onToggleLayer(layerId);
   };
 
+  const legendEntries = useMemo(
+    () =>
+      layers.map((layer, index) => ({
+        id: layer.id,
+        label: layer.label,
+        color: layer.color || fallbackPalette[index % fallbackPalette.length],
+        featureCount: layer.featureCount,
+        active: layerVisibility[layer.id] !== false,
+      })),
+    [layers, layerVisibility]
+  );
+
+  const totalLegendFeatures = useMemo(
+    () => legendEntries.reduce((sum, entry) => sum + entry.featureCount, 0),
+    [legendEntries]
+  );
+
   const handleSearch = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!searchTerm.trim() || !mapInstance) {
@@ -310,8 +327,8 @@ export function PropertyReportMap({ parcels, layers, layerVisibility, onToggleLa
         </div>
       </CardHeader>
 
-      <CardContent className="flex-1 p-0 relative min-h-[480px]">
-        <div className="absolute inset-0 rounded-b-lg overflow-hidden">
+      <CardContent className="flex-1 p-0 flex flex-col">
+        <div className="relative flex-1 min-h-[480px] overflow-hidden rounded-b-lg">
           <MapContainer
             center={[-23.5, 146.3]}
             zoom={6}
@@ -347,6 +364,40 @@ export function PropertyReportMap({ parcels, layers, layerVisibility, onToggleLa
             </div>
           )}
         </div>
+
+        {legendEntries.length > 0 && (
+          <div className="border-t bg-muted/10 px-4 py-3">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Layer Summary</p>
+              <span className="text-[11px] text-muted-foreground">{totalLegendFeatures} features</span>
+            </div>
+            <ul className="mt-2 grid gap-2 text-xs sm:grid-cols-2" role="list">
+              {legendEntries.map(entry => (
+                <li key={entry.id} className="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-background/80 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="inline-flex h-3.5 w-3.5 rounded-full border border-border/40"
+                      style={{
+                        backgroundColor: entry.color,
+                        opacity: entry.active ? 0.9 : 0.2,
+                      }}
+                      aria-hidden="true"
+                    />
+                    <div className="flex flex-col leading-tight">
+                      <span className={`font-medium ${entry.active ? 'text-foreground' : 'text-muted-foreground/80'}`}>
+                        {entry.label}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground/70">{entry.active ? 'Visible' : 'Hidden'}</span>
+                    </div>
+                  </div>
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0" aria-label={`${entry.featureCount} features`}>
+                    {entry.featureCount}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

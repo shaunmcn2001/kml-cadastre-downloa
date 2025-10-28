@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import html
 
 import simplekml
@@ -25,6 +25,20 @@ _DEFAULT_FILL_OPACITY = _DEFAULT_STYLE.fillOpacity or 0.0
 _DEFAULT_STROKE_WIDTH = _DEFAULT_STYLE.strokeWidth or 3.0
 
 _GEOD = Geod(ellps="WGS84")
+
+_POPUP_CSS = """
+<style type="text/css">
+.praedia-popup{background:#0b1220;color:#e8eefc;font-family:'Inter','Segoe UI',-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;font-size:13px;line-height:1.5;padding:14px 16px;border-radius:16px;box-shadow:0 18px 36px rgba(8,15,35,0.55);max-width:320px;}
+.praedia-popup .title{font-size:16px;font-weight:600;margin:0 0 8px;color:#f8fafc;}
+.praedia-popup .subtitle{font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#9fb2d8;margin-bottom:12px;}
+.praedia-popup .row{margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(148,163,184,0.18);}
+.praedia-popup .row:last-child{margin-bottom:0;border-bottom:none;padding-bottom:0;}
+.praedia-popup .label{display:block;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;font-weight:600;color:#9fb2d8;margin-bottom:3px;}
+.praedia-popup .value{display:block;font-size:12px;color:#e2e8f0;word-break:break-word;white-space:pre-wrap;}
+.praedia-popup a{color:#38bdf8;text-decoration:none;}
+.praedia-popup a:hover{text-decoration:underline;}
+</style>
+"""
 
 
 def _opacity_to_alpha(opacity: Optional[float]) -> int:
@@ -99,6 +113,40 @@ def _calculate_area_hectares(geom) -> Optional[float]:
     except Exception as exc:
         logger.debug(f"Failed to calculate merged geometry area: {exc}")
         return None
+
+
+def _popup_wrap(parts: List[str]) -> str:
+    body = "".join(part for part in parts if part)
+    if not body:
+        return ""
+    return _POPUP_CSS + f"<div class='praedia-popup'>{body}</div>"
+
+
+def _popup_title(text: str) -> str:
+    if not text:
+        return ""
+    return f"<div class='title'>{html.escape(text)}</div>"
+
+
+def _popup_subtitle(text: Optional[str]) -> str:
+    if not text:
+        return ""
+    return f"<div class='subtitle'>{html.escape(text)}</div>"
+
+
+def _popup_row(label: str, value: Optional[str], *, escape_value: bool = True) -> str:
+    value_clean = value if value is not None else ""
+    if isinstance(value_clean, str):
+        value_clean = value_clean.strip()
+    if not value_clean:
+        return ""
+    value_html = html.escape(value_clean) if escape_value else value_clean
+    return (
+        "<div class='row'>"
+        f"<span class='label'>{html.escape(label)}:</span>"
+        f"<span class='value'>{value_html}</span>"
+        "</div>"
+    )
 
 
 def _merge_features_by_name(
@@ -291,59 +339,212 @@ def _display_name_from_props(props) -> str:
     return str(getattr(props, "id", "Parcel"))
 
 
+def _clean_text(value: Optional[Any]) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _combine_label_code(label: Optional[str], code: Optional[str]) -> Optional[str]:
+    label_clean = _clean_text(label)
+    code_clean = _clean_text(code)
+    if label_clean and code_clean and label_clean.upper() != code_clean.upper():
+        return f"{label_clean} ({code_clean})"
+    return label_clean or code_clean or None
+
+
+def _format_bore_popup(data: Dict[str, Any]) -> str:
+    title = _clean_text(data.get("bore_number") or data.get("name") or data.get("code") or data.get("id"))
+    subtitle = _clean_text(data.get("layer_label") or data.get("layer_title"))
+    parts: List[str] = []
+    parts.append(_popup_title(title or "Registered Bore"))
+    parts.append(_popup_subtitle(subtitle or "Groundwater Monitoring"))
+
+    lotplan = _clean_text(data.get("lotplan"))
+    parts.append(_popup_row("Lot/Plan", lotplan) if lotplan else "")
+
+    status_text = _combine_label_code(data.get("status_label"), data.get("status"))
+    parts.append(_popup_row("Status", status_text) if status_text else "")
+
+    type_text = _combine_label_code(data.get("type_label"), data.get("type"))
+    parts.append(_popup_row("Type", type_text) if type_text else "")
+
+    drilled = _clean_text(data.get("drilled_date"))
+    parts.append(_popup_row("Drilled", drilled) if drilled else "")
+
+    report_url = _clean_text(data.get("report_url") or data.get("bore_report_url"))
+    if report_url:
+        safe_url = html.escape(report_url, quote=True)
+        link_html = f"<a href='{safe_url}' target='_blank' rel='noopener'>View bore report</a>"
+        parts.append(_popup_row("Report", link_html, escape_value=False))
+
+    return _popup_wrap(parts)
+
+
+def _format_water_popup(data: Dict[str, Any]) -> str:
+    title = _clean_text(
+        data.get("display_name") or data.get("name") or data.get("layer_label") or data.get("id")
+    ) or "Water Feature"
+    subtitle = _clean_text(data.get("layer_label") or data.get("layer_title"))
+    parts: List[str] = []
+    parts.append(_popup_title(title))
+    parts.append(_popup_subtitle(subtitle or "Water Resources"))
+
+    lotplan = _clean_text(data.get("lotplan"))
+    parts.append(_popup_row("Lot/Plan", lotplan) if lotplan else "")
+
+    code_value = _clean_text(data.get("code"))
+    parts.append(_popup_row("Code", code_value) if code_value else "")
+
+    area = data.get("area_ha")
+    if area not in (None, "", 0):
+        try:
+            parts.append(_popup_row("Area (ha)", f"{float(area):.2f}"))
+        except (TypeError, ValueError):
+            parts.append(_popup_row("Area (ha)", _clean_text(area)))
+
+    skip_keys = {
+        "display_name",
+        "name",
+        "code",
+        "layer_id",
+        "layer_label",
+        "layer_title",
+        "source_layer_name",
+        "lotplan",
+        "layer_color",
+        "geometry",
+        "id",
+        "area_ha",
+        "area_m2",
+        "geometry_type",
+    }
+
+    extras: List[Tuple[str, str]] = []
+    for key, raw_value in (data or {}).items():
+        if key in skip_keys or raw_value is None:
+            continue
+        if isinstance(raw_value, (list, tuple)):
+            values = [_clean_text(v) for v in raw_value if _clean_text(v)]
+            if not values:
+                continue
+            value_text = ", ".join(values)
+        else:
+            value_text = _clean_text(raw_value)
+        if not value_text:
+            continue
+        label = key.replace("_", " ").strip().title()
+        extras.append((label, value_text))
+
+    extras.sort()
+    for label, value_text in extras[:10]:
+        parts.append(_popup_row(label, value_text))
+
+    return _popup_wrap(parts)
+
+
+def _format_generic_popup(data: Dict[str, Any]) -> str:
+    title = _clean_text(
+        data.get("display_name") or data.get("name") or data.get("code") or data.get("id")
+    ) or "Feature"
+    subtitle = _clean_text(data.get("layer_label") or data.get("layer_title"))
+
+    parts: List[str] = []
+    parts.append(_popup_title(title))
+    if subtitle and subtitle.lower() != title.lower():
+        parts.append(_popup_subtitle(subtitle))
+
+    ordered_fields = [
+        ("Lot/Plan", "lotplan"),
+        ("Code", "code"),
+        ("Alias", "alias"),
+        ("Parcel Type", "parcel_type"),
+        ("Tenure", "tenure"),
+        ("Status", "status"),
+        ("Type", "type"),
+    ]
+    for label, key in ordered_fields:
+        value = data.get(key)
+        if value in (None, ""):
+            continue
+        parts.append(_popup_row(label, _clean_text(value)))
+
+    area = data.get("area_ha")
+    if area not in (None, "", 0):
+        try:
+            parts.append(_popup_row("Area (ha)", f"{float(area):.2f}"))
+        except (TypeError, ValueError):
+            parts.append(_popup_row("Area (ha)", _clean_text(area)))
+
+    skip_keys = {
+        "display_name",
+        "name",
+        "code",
+        "lotplan",
+        "alias",
+        "parcel_type",
+        "tenure",
+        "status",
+        "type",
+        "layer_id",
+        "layer_label",
+        "layer_title",
+        "layer_color",
+        "geometry",
+        "id",
+        "area_ha",
+        "area_m2",
+        "geometry_type",
+        "bore_number",
+        "status_label",
+        "type_label",
+        "drilled_date",
+        "report_url",
+    }
+
+    extras: List[Tuple[str, str]] = []
+    for key, raw_value in (data or {}).items():
+        if key in skip_keys or raw_value is None:
+            continue
+        if isinstance(raw_value, (list, tuple)):
+            values = [_clean_text(v) for v in raw_value if _clean_text(v)]
+            if not values:
+                continue
+            value_text = ", ".join(values)
+        else:
+            value_text = _clean_text(raw_value)
+        if not value_text:
+            continue
+        label = key.replace("_", " ").strip().title()
+        extras.append((label, value_text))
+
+    extras.sort()
+    for label, value_text in extras[:8]:
+        parts.append(_popup_row(label, value_text))
+
+    return _popup_wrap(parts)
+
+
 def _add_features_to_container(container, features: List[Feature], style):
     """Add features to KML container with given style."""
 
-    def _format_description(props) -> str:
+    def _compose_description(props: FeatureProperties) -> str:
         data = props.__dict__.copy()
-        lines: List[str] = []
+        layer_id = _clean_text(data.get("layer_id")).lower()
+        layer_label = _clean_text(data.get("layer_label")).lower()
 
-        layer_label = data.get("layer_label") or data.get("layer")
-        title = data.get("name") or layer_label or data.get("id")
-        if title:
-            lines.append(f"<div class='kml-title'><strong>{html.escape(str(title))}</strong></div>")
-
-        def add_row(label: str, value_key: str, formatter=lambda v: v):
-            value = data.get(value_key)
-            if value is None or value == "":
-                return
-            if isinstance(value, float):
-                value_text = formatter(value)
-            else:
-                value_text = formatter(value)
-            value_text = str(value_text)
-            if not value_text:
-                return
-            lines.append(
-                f"<div class='kml-row'><span class='kml-label'>{html.escape(label)}:</span> {html.escape(value_text)}</div>"
-            )
-
-        add_row("Lot/Plan", "lotplan")
-        add_row("Parcel ID", "id")
-        add_row("Layer", "layer_label")
-        add_row("Code", "code")
-        add_row("Area (ha)", "area_ha", lambda v: f"{float(v):.2f}")
-        add_row("Status", "status_label")
-        add_row("Type", "type_label")
-        add_row("Drilled", "drilled_date")
-
-        report_url = data.get("report_url") or data.get("bore_report_url")
-        if report_url:
-            link = html.escape(str(report_url))
-            lines.append(
-                f"<div class='kml-row'><span class='kml-label'>Report:</span> <a href='{link}' target='_blank'>{link}</a></div>"
-            )
-
-        if not lines:
-            return ""
-        body = "".join(lines)
-        return f"<![CDATA[<div class='kml-popup'>{body}</div>]]>"
+        if layer_id == "bores" or "bore" in layer_label:
+            return _format_bore_popup(data)
+        if layer_id == "watercourses" or "water" in layer_label:
+            return _format_water_popup(data)
+        return _format_generic_popup(data)
 
     def _apply_common_metadata(placemark, props, desired_name: str):
         placemark.name = desired_name        # override any upstream props.name
         placemark.snippet.maxlines = 0       # hide grey line in Places panel
         placemark.snippet.content = ""
-        placemark.description = _format_description(props)
+        description_html = _compose_description(props)
+        placemark.description = f"<![CDATA[{description_html}]]>" if description_html else ""
 
         layer_color = getattr(props, "layer_color", None) or getattr(props, "color", None)
         if layer_color:
@@ -404,6 +605,66 @@ def _add_features_to_container(container, features: List[Feature], style):
                         f"{desired_name} (Part {index})" if total_parts > 1 else desired_name
                     )
                     _apply_common_metadata(child_poly, props, part_name)
+
+            elif geom_type == 'LineString':
+                if not coords:
+                    continue
+                line = container.newlinestring()
+                _apply_common_metadata(line, props, desired_name)
+                try:
+                    line.coords = [(float(pt[0]), float(pt[1])) for pt in coords]
+                except Exception:
+                    line.coords = coords
+                line.tessellate = 1
+
+            elif geom_type == 'MultiLineString':
+                if not coords:
+                    continue
+
+                multigeom = container.newmultigeometry(name=desired_name)
+                _apply_common_metadata(multigeom, props, desired_name)
+
+                total_parts = len(coords)
+                for index, line_coords in enumerate(coords, start=1):
+                    if not line_coords:
+                        continue
+                    child_line = multigeom.newlinestring()
+                    try:
+                        child_line.coords = [(float(pt[0]), float(pt[1])) for pt in line_coords]
+                    except Exception:
+                        child_line.coords = line_coords
+                    child_line.tessellate = 1
+                    part_name = (
+                        f"{desired_name} (Segment {index})" if total_parts > 1 else desired_name
+                    )
+                    _apply_common_metadata(child_line, props, part_name)
+
+            elif geom_type == 'Point':
+                if not coords:
+                    continue
+                lon, lat = coords[:2]
+                point = container.newpoint()
+                _apply_common_metadata(point, props, desired_name)
+                point.coords = [(float(lon), float(lat))]
+
+            elif geom_type == 'MultiPoint':
+                if not coords:
+                    continue
+
+                multigeom = container.newmultigeometry(name=desired_name)
+                _apply_common_metadata(multigeom, props, desired_name)
+
+                total_parts = len(coords)
+                for index, point_coords in enumerate(coords, start=1):
+                    if not point_coords:
+                        continue
+                    lon, lat = point_coords[:2]
+                    child_point = multigeom.newpoint()
+                    child_point.coords = [(float(lon), float(lat))]
+                    part_name = (
+                        f"{desired_name} (Point {index})" if total_parts > 1 else desired_name
+                    )
+                    _apply_common_metadata(child_point, props, part_name)
 
             else:
                 logger.warning(

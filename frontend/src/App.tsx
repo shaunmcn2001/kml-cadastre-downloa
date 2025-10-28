@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { Toaster } from '@/components/ui/sonner';
 import { ParcelInputPanel } from './components/ParcelInputPanel';
 import { MapView } from './components/MapView';
@@ -18,6 +18,35 @@ function App() {
   const [isQuerying, setIsQuerying] = useState(false);
   const [backendError, setBackendError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<'cadastre' | 'property-reports' | 'grazing-maps'>('cadastre');
+  const navIndicatorRef = useRef<HTMLSpanElement | null>(null);
+  const navButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const navItems: Array<{ key: typeof activeView; label: string }> = [
+    { key: 'cadastre', label: 'Cadastre' },
+    { key: 'property-reports', label: 'Property Reports' },
+    { key: 'grazing-maps', label: 'Grazing Maps' },
+  ];
+
+  const updateNavIndicator = useCallback(() => {
+    const indicator = navIndicatorRef.current;
+    const activeButton = navButtonRefs.current[activeView];
+    if (!indicator || !activeButton) return;
+    const parent = activeButton.parentElement;
+    if (!parent) return;
+    const parentRect = parent.getBoundingClientRect();
+    const rect = activeButton.getBoundingClientRect();
+    indicator.style.width = `${rect.width}px`;
+    indicator.style.transform = `translateX(${rect.left - parentRect.left}px)`;
+  }, [activeView]);
+
+  useLayoutEffect(() => {
+    updateNavIndicator();
+  }, [updateNavIndicator]);
+
+  useEffect(() => {
+    const handleResize = () => updateNavIndicator();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [updateNavIndicator]);
 
   const testBackendConnection = async () => {
     try {
@@ -116,8 +145,8 @@ function App() {
       <div className="h-screen flex items-center justify-center bg-background">
         <div className="text-center">
           <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-          <h2 className="text-lg font-semibold text-foreground mb-2">KML Downloads for Google Earth</h2>
-          <p className="text-muted-foreground">Connecting to backend service...</p>
+          <h2 className="text-lg font-semibold text-foreground mb-2">Praedia</h2>
+          <p className="text-muted-foreground">Connecting to spatial services…</p>
         </div>
       </div>
     );
@@ -136,36 +165,46 @@ function App() {
   return (
     <div className="h-screen flex flex-col bg-background">
       <header className="border-b bg-card px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-foreground">KML Downloads</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">Optimized for Google Earth Web & Pro</p>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="text-center sm:text-left">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground">Praedia</h1>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Cadastre & property analytics for Google Earth
+              </p>
+            </div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.35em] text-muted-foreground">
+              NSW • QLD • SA • VIC
+            </div>
           </div>
-          <div className="text-xs text-muted-foreground">
-            NSW • QLD • SA • VIC
-          </div>
+          <nav className="flex justify-center">
+            <div className="relative inline-flex items-center rounded-full bg-muted/30 px-1 py-1 shadow-inner">
+              <span
+                ref={navIndicatorRef}
+                className="pointer-events-none absolute top-1 bottom-1 left-0 rounded-full bg-primary shadow transition-all duration-300 ease-out"
+                style={{ width: 0, transform: 'translateX(0px)' }}
+                aria-hidden="true"
+              />
+              {navItems.map(({ key, label }) => {
+                const active = activeView === key;
+                return (
+                  <button
+                    key={key}
+                    ref={(element) => {
+                      navButtonRefs.current[key] = element;
+                    }}
+                    type="button"
+                    onClick={() => setActiveView(key)}
+                    className={`relative z-10 rounded-full px-4 py-1.5 text-sm font-medium transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 ${active ? 'text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                    aria-pressed={active}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
         </div>
-        <nav className="mt-4 inline-flex items-center space-x-1 rounded-full border bg-muted/40 p-1 text-xs">
-          {[
-            { key: 'cadastre', label: 'Cadastre' },
-            { key: 'property-reports', label: 'Property Reports' },
-            { key: 'grazing-maps', label: 'Grazing Maps' }
-          ].map(({ key, label }) => {
-            const active = activeView === key;
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setActiveView(key as typeof activeView)}
-                className={`px-3 py-1.5 rounded-full transition ${
-                  active ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-background'
-                }`}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </nav>
       </header>
       {activeView === 'cadastre' && (
         <div className="flex-1 flex overflow-hidden">
