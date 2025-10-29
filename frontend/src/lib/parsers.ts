@@ -286,56 +286,98 @@ export function parseQLD(rawText: string): {
 const SA_TITLE_REF_PATTERN = /^[A-Z]{1,3}\d{1,6}\/\d{1,6}$/;
 const SA_PLAN_PATTERN = /^[A-Z]+\d+[A-Z0-9]*$/;
 const SA_LOT_PATTERN = /^[A-Z0-9]+$/;
+const SA_DCDB_PATTERN = /^(?<plan>[A-Z]+[0-9A-Z]*\d)(?<lot>[A-Z]+[0-9A-Z]*\d)$/;
+const SA_NOISE_WORDS = new Set([
+  'LOT',
+  'LOTS',
+  'PLAN',
+  'PARCEL',
+  'ON',
+  'OF',
+  'THE',
+  'SEC',
+  'SECTION',
+  'ALLOTMENT',
+  'ALLOT',
+  'UNIT',
+  'STAGE',
+  'PT',
+  'PART',
+  'HUNDRED',
+  'HD',
+  'DP',
+  'ID',
+]);
 
 function normaliseSATitleRef(raw: string) {
   const cleaned = raw.toUpperCase().replace(/\s+/g, '').trim();
   if (!SA_TITLE_REF_PATTERN.test(cleaned)) {
-    throw new Error("Invalid SA title reference. Expected format like CT6204/831");
+    throw new Error('Invalid SA title reference. Expected format like CT6204/831');
   }
   const [volume, folio] = cleaned.split('/');
   return { id: cleaned, volume, folio };
 }
 
-function normaliseSAPlanParcel(raw: string) {
-  let cleaned = raw.toUpperCase().replace(/\//g, ' ');
-  cleaned = cleaned.replace(/[,;]+/g, ' ');
-  cleaned = cleaned.replace(/\b(LOT|PLAN|PARCEL)\b/g, ' ');
-  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+function splitSaInput(rawText: string): string[] {
+  const entries: string[] = [];
+  rawText.split(/\r?\n/).forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    const parts = trimmed.split(/[;,]+/).map((part) => part.trim()).filter(Boolean);
+    if (parts.length) {
+      entries.push(...parts);
+    } else {
+      entries.push(trimmed);
+    }
+  });
+  return entries;
+}
 
-  if (!cleaned) {
+function tokeniseSa(raw: string) {
+  let text = raw.toUpperCase();
+  text = text.replace(/[\-_/]+/g, ' ');
+  text = text.replace(/[,.;]+/g, ' ');
+  SA_NOISE_WORDS.forEach((word) => {
+    text = text.replace(new RegExp(`\\b${word}\\b`, 'g'), ' ');
+  });
+  text = text.replace(/\s+/g, ' ').trim();
+  const tokens = text ? text.split(' ').filter(Boolean) : [];
+  const compact = text.replace(/\s+/g, '');
+  return { tokens, compact };
+}
+
+function extractSaPlanLot(raw: string) {
+  const { tokens, compact } = tokeniseSa(raw);
+  if (!compact) {
     throw new Error('Invalid SA plan parcel. Expected plan and lot values');
   }
-
-  const parts = cleaned.split(' ');
-  if (parts.length < 2) {
-    throw new Error('Invalid SA plan parcel. Expected plan and lot values');
-  }
-
-  const isPlan = (token: string) => SA_PLAN_PATTERN.test(token ?? '');
-  const isLot = (token: string) => SA_LOT_PATTERN.test(token ?? '');
-
-  const first = parts[0];
-  const last = parts[parts.length - 1];
 
   let plan: string | undefined;
   let lot: string | undefined;
 
-  if (isPlan(first) && isLot(last)) {
-    plan = first;
-    lot = last;
-  } else if (isPlan(last) && isLot(first)) {
-    plan = last;
-    lot = first;
+  const match = SA_DCDB_PATTERN.exec(compact);
+  if (match?.groups) {
+    plan = match.groups.plan;
+    lot = match.groups.lot;
   } else {
-    const joinedFront = parts.slice(0, -1).join('');
-    if (isPlan(joinedFront) && isLot(last)) {
-      plan = joinedFront;
-      lot = last;
-    } else {
-      const joinedBack = parts.slice(1).join('');
-      if (isPlan(joinedBack) && isLot(first)) {
-        plan = joinedBack;
-        lot = first;
+    const planCandidates = tokens.filter((token) => SA_PLAN_PATTERN.test(token));
+    const lotCandidates = tokens.filter((token) => SA_LOT_PATTERN.test(token));
+
+    if (planCandidates.length && lotCandidates.length) {
+      plan = [...planCandidates].sort((a, b) => (b.length - a.length) || (b.match(/\d/g)?.length ?? 0) - (a.match(/\d/g)?.length ?? 0))[0];
+      lot = lotCandidates.find((token) => token !== plan) ?? lotCandidates[0];
+    }
+
+    if ((!plan || !lot) && tokens.length >= 2) {
+      const [first, second] = [...tokens].sort((a, b) => (b.length - a.length) || (b.match(/\d/g)?.length ?? 0) - (a.match(/\d/g)?.length ?? 0));
+      plan = plan ?? first;
+      lot = lot ?? second;
+    }
+
+    if ((!plan || !lot) && tokens.length === 1) {
+      const segments = tokens[0].match(/[A-Z]+\d+/g);
+      if (segments && segments.length >= 2) {
+        [plan, lot] = segments;
       }
     }
   }
@@ -344,10 +386,24 @@ function normaliseSAPlanParcel(raw: string) {
     throw new Error("Invalid SA plan parcel. Expected format like 'D117877 A22'");
   }
 
+  if (plan.length < lot.length) {
+    [plan, lot] = [lot, plan];
+  }
+
+  return { plan, lot };
+}
+
+function normaliseSADCDB(raw: string) {
+  const { plan, lot } = extractSaPlanLot(raw);
+  return { id: `${plan}${lot}`, plan, lot };
+}
+
+function normaliseSAPlanParcel(raw: string) {
+  const { plan, lot } = extractSaPlanLot(raw);
   return { id: `${plan} ${lot}`, plan, lot };
 }
 
-// SA Parser - supports title references and plan parcel identifiers
+// SA Parser - supports title references and DCDB identifiers
 export function parseSA(rawText: string): {
   valid: ParsedParcel[];
   malformed: Array<{ raw: string; error: string }>;
@@ -355,14 +411,20 @@ export function parseSA(rawText: string): {
   const valid: ParsedParcel[] = [];
   const malformed: Array<{ raw: string; error: string }> = [];
 
-  const lines = rawText.split('\n').map((line) => line.trim()).filter(Boolean);
+  const seen = new Set<string>();
+  const entries = splitSaInput(rawText);
 
-  for (const line of lines) {
+  for (const line of entries) {
     try {
       try {
         const { id, volume, folio } = normaliseSATitleRef(line);
+        const identifier = `SA:TITLE:${id}`;
+        if (seen.has(identifier)) {
+          continue;
+        }
+        seen.add(identifier);
         valid.push({
-          id,
+          id: identifier,
           state: 'SA',
           raw: line,
           volume,
@@ -370,9 +432,14 @@ export function parseSA(rawText: string): {
         });
         continue;
       } catch (err) {
-        const { id, plan, lot } = normaliseSAPlanParcel(line);
+        const { id, plan, lot } = normaliseSADCDB(line);
+        const identifier = `SA:DCDB:${id}`;
+        if (seen.has(identifier)) {
+          continue;
+        }
+        seen.add(identifier);
         valid.push({
-          id,
+          id: identifier,
           state: 'SA',
           raw: line,
           plan,

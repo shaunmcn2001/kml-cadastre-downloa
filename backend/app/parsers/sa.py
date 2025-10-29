@@ -6,7 +6,96 @@ from ..models import MalformedEntry, ParcelState, ParsedParcel
 _TITLE_REF_PATTERN = re.compile(r"^[A-Z]{1,3}\d{1,6}/\d{1,6}$")
 _PLAN_PATTERN = re.compile(r"^[A-Z]+\d+[A-Z0-9]*$")
 _LOT_PATTERN = re.compile(r"^[A-Z0-9]+$")
-_DCDB_PATTERN = re.compile(r"^(?P<plan>[A-Z]+\d+)(?P<lot>[A-Z]+\d+)$")
+_DCDB_PATTERN = re.compile(r"^(?P<plan>[A-Z]+[0-9A-Z]*\d)(?P<lot>[A-Z]+[0-9A-Z]*\d)$")
+
+_SA_NOISE_WORDS = {
+    "LOT",
+    "LOTS",
+    "PLAN",
+    "PARCEL",
+    "ON",
+    "OF",
+    "THE",
+    "SEC",
+    "SECTION",
+    "ALLOTMENT",
+    "ALLOT",
+    "UNIT",
+    "STAGE",
+    "PT",
+    "PART",
+    "HUNDRED",
+    "HD",
+    "DP",
+    "ID",
+}
+
+
+def _split_input(raw_text: str) -> List[str]:
+    fragments: List[str] = []
+    for line in raw_text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = [part.strip() for part in re.split(r"[;,]+", line) if part.strip()]
+        if parts:
+            fragments.extend(parts)
+        else:
+            fragments.append(line)
+    return fragments
+
+
+def _tokenise_sa(raw: str) -> Tuple[List[str], str, str]:
+    text = raw.upper()
+    text = re.sub(r"[\-_/]+", " ", text)
+    text = re.sub(r"[,.;]+", " ", text)
+    for noise in _SA_NOISE_WORDS:
+        text = re.sub(rf"\b{noise}\b", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    tokens = [token for token in text.split(" ") if token]
+    compact = text.replace(" ", "")
+    return tokens, text, compact
+
+
+def _extract_plan_lot(raw: str) -> Tuple[str, str]:
+    tokens, _, compact = _tokenise_sa(raw)
+    if not compact:
+        raise ValueError("Invalid SA identifier")
+
+    match = _DCDB_PATTERN.fullmatch(compact)
+    plan = None
+    lot = None
+    if match:
+        plan = match.group("plan")
+        lot = match.group("lot")
+    else:
+        plan_candidates = [token for token in tokens if _PLAN_PATTERN.fullmatch(token)]
+        lot_candidates = [token for token in tokens if _LOT_PATTERN.fullmatch(token)]
+
+        if plan_candidates and lot_candidates:
+            plan = max(plan_candidates, key=lambda t: (len(t), sum(ch.isdigit() for ch in t)))
+            remaining_lots = [token for token in lot_candidates if token != plan]
+            if remaining_lots:
+                lot = max(remaining_lots, key=lambda t: (sum(ch.isdigit() for ch in t), len(t)))
+        if (plan is None or lot is None) and len(tokens) >= 2:
+            sorted_tokens = sorted(tokens, key=lambda t: (len(t), sum(ch.isdigit() for ch in t)), reverse=True)
+            plan = sorted_tokens[0]
+            if len(sorted_tokens) > 1:
+                lot = sorted_tokens[1]
+        if (plan is None or lot is None) and len(tokens) == 1:
+            segments = re.findall(r"[A-Z]+\d+", tokens[0])
+            if len(segments) >= 2:
+                plan = segments[0]
+                lot = segments[1]
+
+    if not plan or not lot:
+        raise ValueError("Invalid SA plan/lot combination")
+
+    plan = plan.strip()
+    lot = lot.strip()
+    if len(plan) < len(lot):
+        plan, lot = lot, plan
+    return plan, lot
 
 
 def _normalise_title_ref(raw: str) -> Tuple[str, str, str]:
@@ -19,112 +108,65 @@ def _normalise_title_ref(raw: str) -> Tuple[str, str, str]:
 
 
 def _normalise_plan_parcel(raw: str) -> Tuple[str, str, str]:
-    cleaned = raw.upper().replace("/", " ")
-    cleaned = re.sub(r"[,;]+", " ", cleaned)
-    cleaned = re.sub(r"\b(LOT|PLAN|PARCEL)\b", " ", cleaned)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
-
-    if not cleaned:
-        raise ValueError("Invalid SA plan parcel. Expected plan and lot values")
-
-    parts = cleaned.split(" ")
-    if len(parts) < 2:
-        raise ValueError("Invalid SA plan parcel. Expected plan and lot values")
-
-    def is_plan(token: str) -> bool:
-        return _PLAN_PATTERN.fullmatch(token or "") is not None
-
-    def is_lot(token: str) -> bool:
-        return _LOT_PATTERN.fullmatch(token or "") is not None
-
-    plan = None
-    lot = None
-
-    first, last = parts[0], parts[-1]
-    if is_plan(first) and is_lot(last):
-        plan, lot = first, last
-    elif is_plan(last) and is_lot(first):
-        plan, lot = last, first
-    else:
-        joined_front = "".join(parts[:-1])
-        if is_plan(joined_front) and is_lot(last):
-            plan, lot = joined_front, last
-        else:
-            joined_back = "".join(parts[1:])
-            if is_plan(joined_back) and is_lot(first):
-                plan, lot = joined_back, first
-
-    if not plan or not lot:
-        raise ValueError("Invalid SA plan parcel. Expected format like 'D117877 A22'")
-
+    plan, lot = _extract_plan_lot(raw)
     canonical = f"{plan} {lot}"
     return canonical, plan, lot
 
 
 def _normalise_dcdb_id(raw: str) -> Tuple[str, str, str]:
-    cleaned = re.sub(r"\s+", "", raw.upper())
-    if not cleaned:
-        raise ValueError("Invalid SA DCDB identifier.")
-
-    match = _DCDB_PATTERN.fullmatch(cleaned)
-    if not match:
-        raise ValueError("Invalid SA DCDB identifier. Expected format like 'D16691A11'")
-
-    plan = match.group('plan')
-    lot = match.group('lot')
-    return cleaned, plan, lot
+    plan, lot = _extract_plan_lot(raw)
+    canonical = f"{plan}{lot}"
+    return canonical, plan, lot
 
 
 def parse_sa(raw_text: str) -> Tuple[List[ParsedParcel], List[MalformedEntry]]:
-    """Parse SA parcel identifiers supporting title references and plan parcels."""
+    """Parse SA parcel identifiers supporting title, plan parcel, and DCDB formats."""
 
     valid: List[ParsedParcel] = []
     malformed: List[MalformedEntry] = []
+    seen: set[str] = set()
 
-    lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
-
-    for line in lines:
+    for fragment in _split_input(raw_text):
+        if not fragment:
+            continue
         try:
             try:
-                title_ref, volume, folio = _normalise_title_ref(line)
+                title_ref, volume, folio = _normalise_title_ref(fragment)
+                identifier = f"SA:TITLE:{title_ref}"
+                if identifier in seen:
+                    continue
+                seen.add(identifier)
                 valid.append(
                     ParsedParcel(
-                        id=title_ref,
+                        id=identifier,
                         state=ParcelState.SA,
-                        raw=line,
+                        raw=fragment,
                         volume=volume,
                         folio=folio,
                     )
                 )
                 continue
             except ValueError:
-                try:
-                    dcdb_id, plan, lot = _normalise_dcdb_id(line)
-                    valid.append(
-                        ParsedParcel(
-                            id=dcdb_id,
-                            state=ParcelState.SA,
-                            raw=line,
-                            plan=plan,
-                            lot=lot,
-                        )
-                    )
-                    continue
-                except ValueError:
-                    canonical, plan, lot = _normalise_plan_parcel(line)
-                    valid.append(
-                        ParsedParcel(
-                            id=canonical,
-                            state=ParcelState.SA,
-                            raw=line,
-                            plan=plan,
-                            lot=lot,
-                        )
-                    )
+                pass
+
+            dcdb_id, plan, lot = _normalise_dcdb_id(fragment)
+            identifier = f"SA:DCDB:{dcdb_id}"
+            if identifier in seen:
+                continue
+            seen.add(identifier)
+            valid.append(
+                ParsedParcel(
+                    id=identifier,
+                    state=ParcelState.SA,
+                    raw=fragment,
+                    plan=plan,
+                    lot=lot,
+                )
+            )
         except Exception as exc:
             malformed.append(
                 MalformedEntry(
-                    raw=line,
+                    raw=fragment,
                     error=str(exc),
                 )
             )

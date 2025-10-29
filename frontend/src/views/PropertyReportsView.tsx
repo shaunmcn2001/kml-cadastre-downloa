@@ -191,49 +191,58 @@ export function PropertyReportsView() {
                   <Label htmlFor="select-all-datasets" className="text-xs">Select all datasets</Label>
                 </div>
 
-                <div className="space-y-3">
-                  {datasets.map((dataset, index) => {
-                    const selected = selectAll || selectedDatasetIds.includes(dataset.id);
-                    const color = dataset.color || fallbackColors[index % fallbackColors.length];
-                    return (
-                      <button
-                        key={dataset.id}
-                        type="button"
-                        disabled={selectAll}
-                        onClick={() => handleDatasetToggle(dataset.id)}
-                        className={`w-full text-left rounded-2xl border px-4 py-3 transition-all ${
-                          selected
-                            ? 'border-primary/50 bg-primary/10 shadow-lg shadow-primary/10'
-                            : 'border-border bg-background hover:border-primary/30 hover:bg-muted/60'
-                        } ${selectAll ? 'cursor-not-allowed opacity-75' : ''}`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <span
-                            className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border-4 border-background text-xs font-semibold text-white shadow-inner"
-                            style={{ backgroundColor: color, opacity: selected ? 0.95 : 0.25 }}
-                          />
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className={`text-sm font-semibold ${selected ? 'text-foreground' : 'text-muted-foreground'}`}>
-                                {dataset.label}
-                              </span>
-                              <span className="rounded-full border border-border/60 bg-background/80 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground/80">
-                                {dataset.geometryType}
-                              </span>
-                              {selectAll && (
-                                <Badge variant="secondary" className="text-[10px] px-1 py-0">All</Badge>
-                              )}
-                            </div>
-                            {dataset.description && (
-                              <p className="mt-2 text-[11px] leading-snug text-muted-foreground/70">
-                                {dataset.description}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
+                <div className="space-y-4">
+                  {datasetGroups.map(({ group, items }, groupIndex) => (
+                    <div key={group}>
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground/80 mb-2">
+                        {group}
+                      </p>
+                      <div className="space-y-3">
+                        {items.map((dataset, index) => {
+                          const selected = selectAll || selectedDatasetIds.includes(dataset.id);
+                          const color = dataset.color || fallbackColors[(groupIndex + index) % fallbackColors.length];
+                          return (
+                            <button
+                              key={dataset.id}
+                              type="button"
+                              disabled={selectAll}
+                              onClick={() => handleDatasetToggle(dataset.id)}
+                              className={`w-full text-left rounded-2xl border px-4 py-3 transition-all ${
+                                selected
+                                  ? 'border-primary/50 bg-primary/10 shadow-lg shadow-primary/10'
+                                  : 'border-border bg-background hover:border-primary/30 hover:bg-muted/60'
+                              } ${selectAll ? 'cursor-not-allowed opacity-75' : ''}`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <span
+                                  className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border-4 border-background text-xs font-semibold text-white shadow-inner"
+                                  style={{ backgroundColor: color, opacity: selected ? 0.95 : 0.25 }}
+                                />
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`text-sm font-semibold ${selected ? 'text-foreground' : 'text-muted-foreground'}`}>
+                                      {dataset.label}
+                                    </span>
+                                    <span className="rounded-full border border-border/60 bg-background/80 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground/80">
+                                      {dataset.geometryType}
+                                    </span>
+                                    {selectAll && (
+                                      <Badge variant="secondary" className="text-[10px] px-1 py-0">All</Badge>
+                                    )}
+                                  </div>
+                                  {dataset.description && (
+                                    <p className="mt-2 text-[11px] leading-snug text-muted-foreground/70">
+                                      {dataset.description}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
 
                   {datasets.length === 0 && (
                     <p className="text-xs text-muted-foreground">Loading dataset catalogue…</p>

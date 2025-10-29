@@ -101,21 +101,27 @@ export function PropertyReportMap({ parcels, layers, layerVisibility, onToggleLa
     datasetLayersRef.current = {};
 
     layers.forEach((layer, index) => {
-      const color = layer.color || fallbackPalette[index % fallbackPalette.length];
+      const fallbackColor = layer.color || fallbackPalette[index % fallbackPalette.length];
       const geojsonLayer = L.geoJSON(layer.featureCollection as any, {
-        style: () => ({
-          color,
-          weight: layer.geometryType === 'polyline' ? 2 : 1.25,
-          fillOpacity: layer.geometryType === 'polygon' ? 0.25 : 0,
-        }),
-        pointToLayer: (_feature, latlng) =>
-          L.circleMarker(latlng, {
+        style: (feature: any) => {
+          const featureColor = feature?.properties?.layer_color || fallbackColor;
+          return {
+            color: featureColor,
+            fillColor: featureColor,
+            weight: layer.geometryType === 'polyline' ? 2 : 1.25,
+            fillOpacity: layer.geometryType === 'polygon' ? 0.25 : 0,
+          };
+        },
+        pointToLayer: (feature, latlng) => {
+          const featureColor = (feature?.properties as any)?.layer_color || fallbackColor;
+          return L.circleMarker(latlng, {
             radius: 5,
-            fillColor: color,
-            color,
+            fillColor: featureColor,
+            color: featureColor,
             weight: 1,
             fillOpacity: 0.9,
-          }),
+          });
+        },
       });
 
       datasetLayersRef.current[layer.id] = geojsonLayer;
@@ -327,7 +333,9 @@ export function PropertyReportMap({ parcels, layers, layerVisibility, onToggleLa
                     <span className={`text-xs font-medium ${active ? 'text-foreground' : 'text-muted-foreground'}`}>
                       {layer.label}
                     </span>
-                    <span className="text-[11px] text-muted-foreground/70">{layer.geometryType}</span>
+                    <span className="text-[11px] text-muted-foreground/70">
+                      {layer.group ? `${layer.group} · ${layer.geometryType}` : layer.geometryType}
+                    </span>
                   </div>
                 </div>
                 <Badge variant="secondary" className="text-[10px] px-1.5 py-0 pointer-events-none">

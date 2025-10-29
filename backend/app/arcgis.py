@@ -350,36 +350,79 @@ class ArcGISClient:
         service_url: str,
         field_mapping: Dict[str, str]
     ) -> List[Dict[str, Any]]:
-        plan_parcels: List[str] = []
-        title_refs: List[str] = []
-        dcdb_ids: List[str] = []
+        plan_parcels: set[str] = set()
+        parcel_identifiers: set[str] = set()
+        title_refs: set[str] = set()
+        dcdb_ids: set[str] = set()
 
         for raw_id in parcel_ids:
             if not raw_id:
                 continue
-            normalized = " ".join(str(raw_id).upper().split())
+
+            identifier = str(raw_id).strip()
+            if not identifier:
+                continue
+
+            kind = ""
+            value = identifier
+            if identifier.upper().startswith("SA:"):
+                parts = identifier.split(":", 2)
+                if len(parts) == 3:
+                    _, kind, value = parts
+                    kind = kind.upper()
+                    value = value.strip().upper()
+            else:
+                value = " ".join(identifier.upper().split())
+
+            if kind == "TITLE" or _SA_TITLE_REF_PATTERN.fullmatch(value.replace(" ", "")):
+                title_refs.add(value.replace(" ", ""))
+                continue
+
+            if kind == "DCDB":
+                dcdb_ids.add(value.replace(" ", ""))
+                match = _SA_DCDB_PATTERN.fullmatch(value.replace(" ", ""))
+                if match:
+                    plan = match.group("plan")
+                    lot = match.group("lot")
+                    if len(plan) < len(lot):
+                        plan, lot = lot, plan
+                    plan_parcels.add(f"{plan} {lot}")
+                    parcel_identifiers.add(value.replace(" ", ""))
+                else:
+                    parcel_identifiers.add(value.replace(" ", ""))
+                continue
+
+            normalized = " ".join(value.split())
             compact = normalized.replace(" ", "")
-            if _SA_TITLE_REF_PATTERN.fullmatch(compact):
-                title_refs.append(compact)
-            elif _SA_DCDB_PATTERN.fullmatch(compact):
-                dcdb_ids.append(compact)
-            elif _SA_PLAN_PARCEL_PATTERN.fullmatch(normalized):
-                plan_parcels.append(normalized)
+            if _SA_PLAN_PARCEL_PATTERN.fullmatch(normalized):
+                plan_parcels.add(normalized)
+                parcel_identifiers.add(compact)
+            elif (match := _SA_DCDB_PATTERN.fullmatch(compact)):
+                plan = match.group("plan")
+                lot = match.group("lot")
+                if len(plan) < len(lot):
+                    plan, lot = lot, plan
+                plan_parcels.add(f"{plan} {lot}")
+                dcdb_ids.add(compact)
+                parcel_identifiers.add(compact)
             else:
                 logger.warning("Unrecognised SA identifier format '%s'; defaulting to parcel_id query", raw_id)
-                plan_parcels.append(normalized)
+                plan_parcels.add(normalized)
 
         queries: List[Tuple[str, List[str]]] = []
 
         if plan_parcels:
-            queries.append((field_mapping['id_field'], sorted(set(plan_parcels))))
+            queries.append((field_mapping['id_field'], sorted(plan_parcels)))
+
+        if parcel_identifiers:
+            queries.append(('parcel_identifier', sorted(parcel_identifiers)))
 
         title_field = field_mapping.get('title_field', 'title_ref')
         if title_refs and title_field:
-            queries.append((title_field, sorted(set(title_refs))))
+            queries.append((title_field, sorted(title_refs)))
 
         if dcdb_ids:
-            queries.append(('dcdb_id', sorted(set(dcdb_ids))))
+            queries.append(('dcdb_id', sorted(dcdb_ids)))
 
         dedup: Dict[str, Dict[str, Any]] = {}
 

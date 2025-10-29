@@ -60,6 +60,9 @@ export interface PropertyLayerMeta {
   description?: string;
   geometryType: string;
   color?: string;
+   colorStrategy?: string;
+   colorMap?: Record<string, string>;
+   group?: string;
 }
 
 export interface PropertyReportLayerResult {
@@ -68,6 +71,9 @@ export interface PropertyReportLayerResult {
   geometryType: string;
   featureCount: number;
   color?: string;
+  colorStrategy?: string;
+  colorMap?: Record<string, string>;
+  group?: string;
   featureCollection: {
     type: 'FeatureCollection';
     features: ParcelFeature[];

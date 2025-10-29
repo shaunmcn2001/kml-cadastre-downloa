@@ -12,6 +12,7 @@ from .arcgis import ArcGISClient, ArcGISError
 from .models import ParcelState
 from .parsers.qld import parse_qld
 from .property_config import PROPERTY_LAYER_MAP, PROPERTY_REPORT_LAYERS, PropertyLayer
+from .landtype.colors import color_from_code
 from .utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -237,6 +238,42 @@ def _calculate_area_hectares(shapely_geom) -> Optional[float]:
     return abs(area) / 10000.0 if area else None
 
 
+def _rgb_to_hex(rgb: Tuple[int, int, int]) -> str:
+    r, g, b = rgb
+    return f"#{max(0, min(255, r)):02x}{max(0, min(255, g)):02x}{max(0, min(255, b)):02x}"
+
+
+def _color_from_code_hex(code: Optional[str]) -> Optional[str]:
+    if not code:
+        return None
+    return _rgb_to_hex(color_from_code(str(code)))
+
+
+def _apply_layer_color(layer: PropertyLayer, props: Dict[str, Any]) -> Optional[str]:
+    if layer.color_strategy == "static":
+        return layer.color
+    if layer.color_strategy == "hash_code":
+        key = None
+        if layer.code_field and props.get(layer.code_field):
+            key = props.get(layer.code_field)
+        else:
+            key = props.get("code") or props.get("name")
+        return _color_from_code_hex(key)
+    if layer.color_strategy == "lookup":
+        if not layer.color_map:
+            return None
+        key = props.get(layer.code_field or "status") or props.get("status")
+        if key is None:
+            return None
+        key_str = str(key).strip()
+        return (
+            layer.color_map.get(key_str)
+            or layer.color_map.get(key_str.upper())
+            or layer.color_map.get(key_str.lower())
+        )
+    return layer.color
+
+
 
 async def _fetch_parcels(
     lotplans: Sequence[str],
@@ -400,7 +437,9 @@ async def _fetch_layer_features(
     lotplan_label = ", ".join(lotplans)
     primary_lotplan = lotplans[0] if lotplans else None
 
-    for feature in fc.get("features", []):
+    seen_bore_numbers: set[str] = set()
+
+    for index, feature in enumerate(fc.get("features", []), start=1):
         clipped = _clip_feature_to_union(feature, layer, parcel_union)
         if not clipped:
             continue
@@ -409,8 +448,6 @@ async def _fetch_layer_features(
         props.setdefault("layer_id", layer.id)
         props.setdefault("layer_label", layer.label)
         props.setdefault("geometry_type", layer.geometry_type)
-        if layer.color:
-            props.setdefault("layer_color", layer.color)
 
         if layer.name_field and props.get(layer.name_field):
             props.setdefault("name", props.get(layer.name_field))
@@ -422,14 +459,28 @@ async def _fetch_layer_features(
 
         if layer.id == "bores":
             props.update(_normalise_bore_properties(props))
+            bore_id = props.get("bore_number")
+            if bore_id:
+                bore_id_str = str(bore_id).strip().upper()
+                if bore_id_str in seen_bore_numbers:
+                    continue
+                seen_bore_numbers.add(bore_id_str)
         elif layer.id == "easements":
             props.update(_normalise_easement_properties(props, primary_lotplan))
-        elif layer.id == "watercourses":
+        elif layer.group == "Water" or layer.id.startswith("water-"):
             props.update(_normalise_water_properties(props, layer, lotplan_label))
+            if not props.get("code"):
+                props["code"] = f"{layer.id}-{index}"
+            if not props.get("name"):
+                props["name"] = props.get("display_name") or f"{layer.label} {index}"
         else:
             display_name = props.get("name") or props.get("code")
             if display_name:
                 props.setdefault("display_name", _clean_text(display_name))
+
+        color_value = _apply_layer_color(layer, props)
+        if color_value:
+            props["layer_color"] = color_value
 
         clipped["properties"] = props
         features_out.append(clipped)
@@ -439,6 +490,9 @@ async def _fetch_layer_features(
         "label": layer.label,
         "geometryType": layer.geometry_type,
         "color": layer.color,
+        "colorStrategy": layer.color_strategy,
+        "colorMap": layer.color_map,
+        "group": layer.group,
         "featureCollection": {
             "type": "FeatureCollection",
             "features": features_out,

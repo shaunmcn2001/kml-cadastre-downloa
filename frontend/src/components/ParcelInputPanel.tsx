@@ -48,7 +48,9 @@ Lot 1 on RP 912949
     SA: `CT6204/831
 D117877 A22
 A22 D117877
-Lot A1 D12345`,
+Lot A1 D12345
+Lot S1 on S204930
+H210300S562`,
     VIC: `27\\PS433970
 27/PS433970
 27 PS433970
@@ -115,8 +117,9 @@ Lot 27 PS433970`
                   {exampleTexts.SA}
                 </div>
                 <p className="mt-2 text-xs">
-                  Supports: title references (e.g. CT6204/831) and plan parcels in any order
-                  (e.g. D117877 A22 or A22 D117877). Separate multiple entries with new lines or commas.
+                  Supports: title references (e.g. CT6204/831), plan/lot combinations in any order
+                  (e.g. D117877 A22, A22 D117877, Lot S1 on S204930), and compact DCDB IDs
+                  like H210300S562. Separate multiple entries with new lines, commas, or semicolons.
                 </p>
               </div>
             </TabsContent>
