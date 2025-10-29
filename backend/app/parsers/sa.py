@@ -6,6 +6,7 @@ from ..models import MalformedEntry, ParcelState, ParsedParcel
 _TITLE_REF_PATTERN = re.compile(r"^[A-Z]{1,3}\d{1,6}/\d{1,6}$")
 _PLAN_PATTERN = re.compile(r"^[A-Z]+\d+[A-Z0-9]*$")
 _LOT_PATTERN = re.compile(r"^[A-Z0-9]+$")
+_DCDB_PATTERN = re.compile(r"^(?P<plan>[A-Z]+\d+)(?P<lot>[A-Z]+\d+)$")
 
 
 def _normalise_title_ref(raw: str) -> Tuple[str, str, str]:
@@ -60,6 +61,20 @@ def _normalise_plan_parcel(raw: str) -> Tuple[str, str, str]:
     return canonical, plan, lot
 
 
+def _normalise_dcdb_id(raw: str) -> Tuple[str, str, str]:
+    cleaned = re.sub(r"\s+", "", raw.upper())
+    if not cleaned:
+        raise ValueError("Invalid SA DCDB identifier.")
+
+    match = _DCDB_PATTERN.fullmatch(cleaned)
+    if not match:
+        raise ValueError("Invalid SA DCDB identifier. Expected format like 'D16691A11'")
+
+    plan = match.group('plan')
+    lot = match.group('lot')
+    return cleaned, plan, lot
+
+
 def parse_sa(raw_text: str) -> Tuple[List[ParsedParcel], List[MalformedEntry]]:
     """Parse SA parcel identifiers supporting title references and plan parcels."""
 
@@ -83,16 +98,29 @@ def parse_sa(raw_text: str) -> Tuple[List[ParsedParcel], List[MalformedEntry]]:
                 )
                 continue
             except ValueError:
-                canonical, plan, lot = _normalise_plan_parcel(line)
-                valid.append(
-                    ParsedParcel(
-                        id=canonical,
-                        state=ParcelState.SA,
-                        raw=line,
-                        plan=plan,
-                        lot=lot,
+                try:
+                    dcdb_id, plan, lot = _normalise_dcdb_id(line)
+                    valid.append(
+                        ParsedParcel(
+                            id=dcdb_id,
+                            state=ParcelState.SA,
+                            raw=line,
+                            plan=plan,
+                            lot=lot,
+                        )
                     )
-                )
+                    continue
+                except ValueError:
+                    canonical, plan, lot = _normalise_plan_parcel(line)
+                    valid.append(
+                        ParsedParcel(
+                            id=canonical,
+                            state=ParcelState.SA,
+                            raw=line,
+                            plan=plan,
+                            lot=lot,
+                        )
+                    )
         except Exception as exc:
             malformed.append(
                 MalformedEntry(

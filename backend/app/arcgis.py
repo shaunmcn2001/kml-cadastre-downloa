@@ -15,6 +15,7 @@ MAX_SEARCH_PAGE_SIZE = 50
 
 _SA_TITLE_REF_PATTERN = re.compile(r"^[A-Z]{1,3}\d{1,6}/\d{1,6}$")
 _SA_PLAN_PARCEL_PATTERN = re.compile(r"^[A-Z]+\d+[A-Z0-9]*\s+[A-Z0-9]+$")
+_SA_DCDB_PATTERN = re.compile(r"^(?P<plan>[A-Z]+\d+)(?P<lot>[A-Z]+\d+)$")
 
 # ArcGIS service endpoints
 ARCGIS_SERVICES = {
@@ -53,9 +54,9 @@ STATE_FIELD_MAPPINGS = {
         'title_field': 'title_ref',
         'lot_field': None,
         'plan_field': None,
-        'search_fields': ['parcel_id', 'title_ref'],
-        'like_fields': ['parcel_id', 'title_ref'],
-        'extra_fields': ['title_ref']
+        'search_fields': ['parcel_id', 'title_ref', 'dcdb_id'],
+        'like_fields': ['parcel_id', 'title_ref', 'dcdb_id'],
+        'extra_fields': ['title_ref', 'dcdb_id']
     },
     ParcelState.VIC: {
         'id_field': 'PARCEL_SPI',
@@ -351,13 +352,17 @@ class ArcGISClient:
     ) -> List[Dict[str, Any]]:
         plan_parcels: List[str] = []
         title_refs: List[str] = []
+        dcdb_ids: List[str] = []
 
         for raw_id in parcel_ids:
             if not raw_id:
                 continue
             normalized = " ".join(str(raw_id).upper().split())
-            if _SA_TITLE_REF_PATTERN.fullmatch(normalized.replace(" ", "")):
-                title_refs.append(normalized.replace(" ", ""))
+            compact = normalized.replace(" ", "")
+            if _SA_TITLE_REF_PATTERN.fullmatch(compact):
+                title_refs.append(compact)
+            elif _SA_DCDB_PATTERN.fullmatch(compact):
+                dcdb_ids.append(compact)
             elif _SA_PLAN_PARCEL_PATTERN.fullmatch(normalized):
                 plan_parcels.append(normalized)
             else:
@@ -372,6 +377,9 @@ class ArcGISClient:
         title_field = field_mapping.get('title_field', 'title_ref')
         if title_refs and title_field:
             queries.append((title_field, sorted(set(title_refs))))
+
+        if dcdb_ids:
+            queries.append(('dcdb_id', sorted(set(dcdb_ids))))
 
         dedup: Dict[str, Dict[str, Any]] = {}
 
@@ -468,21 +476,32 @@ class ArcGISClient:
             elif state == ParcelState.SA:
                 parcel_id_value = properties.get('parcel_id') or feature_id
                 title_ref_value = properties.get('title_ref')
+                dcdb_value = properties.get('dcdb_id')
 
                 canonical = None
-                if isinstance(parcel_id_value, str) and parcel_id_value.strip():
+
+                if isinstance(dcdb_value, str) and dcdb_value.strip():
+                    dcdb_clean = dcdb_value.upper().replace(" ", "")
+                    properties['dcdb_id'] = dcdb_clean
+                    match = _SA_DCDB_PATTERN.fullmatch(dcdb_clean)
+                    if match:
+                        properties.setdefault('plan', match.group('plan'))
+                        properties.setdefault('lot', match.group('lot'))
+                    canonical = dcdb_clean
+
+                if canonical is None and isinstance(parcel_id_value, str) and parcel_id_value.strip():
                     canonical = " ".join(parcel_id_value.upper().split())
                     properties['parcel_id'] = canonical
                     parts = canonical.split()
                     if len(parts) >= 2:
                         properties.setdefault('plan', parts[0])
                         properties.setdefault('lot', parts[1])
-                if isinstance(title_ref_value, str) and title_ref_value.strip():
+
+                if canonical is None and isinstance(title_ref_value, str) and title_ref_value.strip():
                     normalised_title = title_ref_value.upper().replace(" ", "")
                     properties['title_ref'] = normalised_title
                     properties.setdefault('display_title', normalised_title)
-                    if not canonical:
-                        canonical = normalised_title
+                    canonical = normalised_title
 
                 if canonical:
                     feature_id = canonical
