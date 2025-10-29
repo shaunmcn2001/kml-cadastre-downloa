@@ -525,19 +525,62 @@ def _format_generic_popup(data: Dict[str, Any]) -> str:
     return _popup_wrap(parts)
 
 
+def _format_cadastre_popup(data: Dict[str, Any]) -> str:
+    title = _clean_text(
+        data.get("name") or data.get("lotplan") or data.get("lot_plan") or data.get("id")
+    ) or "Parcel"
+    lotplan = ""
+    for key in ("lotplan", "lot_plan", "lot_plan_id"):
+        value = _clean_text(data.get(key))
+        if value:
+            lotplan = value
+            break
+    if not lotplan:
+        lotplan = _clean_text(data.get("id"))
+
+    area = data.get("area_ha")
+    if area not in (None, ""):
+        try:
+            area_text = f"{float(area):.2f} hectares"
+        except (TypeError, ValueError):
+            area_text = f"{_clean_text(area)} hectares"
+    else:
+        area_text = ""
+
+    lines = [f"<b>{html.escape(title)}</b>"]
+    if lotplan:
+        lines.append(f"<b>Lot/Plan:</b> {html.escape(lotplan)}")
+    if area_text:
+        lines.append(f"<b>Area:</b> {html.escape(area_text)}")
+
+    return "<br/>".join(lines)
+
+
 def _add_features_to_container(container, features: List[Feature], style):
     """Add features to KML container with given style."""
 
     def _compose_description(props: FeatureProperties) -> str:
         data = props.__dict__.copy()
-        layer_id = _clean_text(data.get("layer_id")).lower()
-        layer_label = _clean_text(data.get("layer_label")).lower()
+        raw_layer_id = data.get("layer_id")
+        raw_layer_label = data.get("layer_label")
+        layer_id = _clean_text(raw_layer_id).lower()
+        layer_label = _clean_text(raw_layer_label).lower()
 
-        if layer_id == "bores" or "bore" in layer_label:
-            return _format_bore_popup(data)
-        if layer_id == "watercourses" or "water" in layer_label:
-            return _format_water_popup(data)
-        return _format_generic_popup(data)
+        if layer_id:
+            if layer_id == "bores" or "bore" in layer_label:
+                return _format_bore_popup(data)
+            if layer_id == "watercourses" or "water" in layer_label:
+                return _format_water_popup(data)
+            return _format_generic_popup(data)
+
+        if layer_label:
+            if "bore" in layer_label:
+                return _format_bore_popup(data)
+            if "water" in layer_label:
+                return _format_water_popup(data)
+            return _format_generic_popup(data)
+
+        return _format_cadastre_popup(data)
 
     def _apply_common_metadata(placemark, props, desired_name: str):
         placemark.name = desired_name        # override any upstream props.name

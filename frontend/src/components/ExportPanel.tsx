@@ -162,7 +162,7 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
           folderName: folderName.trim() || undefined,
           fillColor: selectedColor,
           strokeColor: selectedColor,
-          mergeByName: true
+          mergeByName: false
         }
       });
 
@@ -202,7 +202,7 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
           folderName: folderName.trim() || undefined,
           fillColor: selectedColor,
           strokeColor: selectedColor,
-          mergeByName: true
+          mergeByName: false
         }
       });
 
