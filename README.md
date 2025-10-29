@@ -39,6 +39,19 @@ The Vite dev server defaults to `http://localhost:5173`.
 - **Frontend**: Build with `npm run build` inside `frontend/` and publish `frontend/dist/`
   to static hosting such as GitHub Pages.
 
+## LandType Workflow
+- **Backend**: FastAPI mounts LandType under `/landtype`. Use:
+  - `GET /landtype/health` for uptime checks.
+  - `GET /landtype/geojson?lotplans=...` or `?bbox=...` to preview clipped polygons.
+  - `POST /landtype/export` with `format` (`kml`/`kmz`/`geojson`/`tiff`) to download styled files.
+- **Frontend**: When the config flag `features.landtypeEnabled` is true the cadastre map shows a LandType toggle.
+  - Enable the overlay, choose **Lotplans** (auto-uses loaded QLD parcels) or **Map Extent**, then refresh.
+  - Export options live in the right-hand panel with format, colour mode, alpha, and filename controls.
+- **Troubleshooting**:
+  - No polygons: ensure QLD parcels are loaded or switch to Map Extent and refresh.
+  - Colour by property: supply a valid attribute name present in LandType features.
+  - Backend limits requests per IP; repeated 429s generally mean rapid refreshes—pause and retry.
+
 ## Further Reading
 - `frontend/README.md` – Component architecture, styling conventions, and advanced UI workflows
 - `backend/README.md` – Endpoint reference, environment variables, and testing strategy

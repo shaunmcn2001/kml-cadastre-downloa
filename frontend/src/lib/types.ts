@@ -1,3 +1,5 @@
+import type { Feature, FeatureCollection, Geometry } from 'geojson';
+
 export type ParcelState = 'NSW' | 'QLD' | 'SA' | 'VIC';
 
 export interface ParsedParcel {
@@ -134,4 +136,69 @@ export interface DebugEntry {
   duration?: number;
   status?: number;
   error?: string;
+}
+
+export type LandTypeColorMode = 'preset' | 'byProperty';
+
+export interface LandTypeStyleOptions {
+  colorMode: LandTypeColorMode;
+  presetName?: string;
+  propertyKey?: string;
+  alpha?: number;
+}
+
+export interface LandTypeLegendEntry {
+  code: string;
+  name?: string;
+  color_hex?: string;
+  area_ha?: number;
+}
+
+export type LandTypeFeature = Feature<
+  Geometry,
+  {
+    code: string;
+    name?: string;
+    area_ha?: number;
+    lotplan?: string;
+    landtype_color?: string;
+    landtype_alpha?: number;
+    color_hex?: string;
+    source?: string;
+    style?: {
+      color?: string;
+      weight?: number;
+      fillColor?: string;
+      fillOpacity?: number;
+    };
+    [key: string]: any;
+  }
+>;
+
+export interface LandTypeCollectionProperties {
+  styleOptions?: LandTypeStyleOptions;
+  legend?: LandTypeLegendEntry[];
+  warnings?: string[];
+  lotplans?: string[];
+  mode?: 'lotplans' | 'bbox';
+  bbox?: [number, number, number, number];
+}
+
+export type LandTypeFeatureCollection = FeatureCollection<Geometry, LandTypeFeature['properties']> & {
+  properties?: LandTypeCollectionProperties;
+};
+
+export type LandTypeExportFormat = 'kml' | 'kmz' | 'geojson' | 'tiff';
+
+export interface LandTypeExportRequest {
+  features: LandTypeFeatureCollection;
+  format: LandTypeExportFormat;
+  styleOptions: LandTypeStyleOptions;
+  filenameTemplate?: string;
+}
+
+export interface LandTypeExportResponse {
+  blob: Blob;
+  filename: string;
+  contentType: string | null;
 }

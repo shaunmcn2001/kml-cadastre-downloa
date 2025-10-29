@@ -1,3 +1,6 @@
 {
-  "BACKEND_URL": "https://kml-cadastre-downloa.onrender.com"
+  "BACKEND_URL": "https://kml-cadastre-downloa.onrender.com",
+  "features": {
+    "landtypeEnabled": true
+  }
 }

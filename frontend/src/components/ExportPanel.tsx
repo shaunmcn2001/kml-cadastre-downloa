@@ -5,27 +5,55 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Download, Package, Image, AlertTriangle, Folder } from '@phosphor-icons/react';
+import { Download, Package, Image, AlertTriangle, Folder, ArrowCircleDown } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { apiClient } from '../lib/api';
 import { cn } from '../lib/utils';
-import type { ParcelFeature } from '../lib/types';
+import type {
+  ParcelFeature,
+  LandTypeFeatureCollection,
+  LandTypeExportFormat,
+} from '../lib/types';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 const COLOR_PRESETS = [
-  { label: 'Subjects', value: '#009FDF' },
-  { label: 'Quotes', value: '#A23F97' },
-  { label: 'Sales', value: '#FF0000' },
-  { label: 'For Sales', value: '#ED7D31' }
+  { id: 'subjects', label: 'Subjects', value: '#009FDF' },
+  { id: 'quotes', label: 'Quotes', value: '#A23F97' },
+  { id: 'sales', label: 'Sales', value: '#FF0000' },
+  { id: 'for-sales', label: 'For Sales', value: '#ED7D31' }
 ] as const;
 
 const DEFAULT_COLOR = COLOR_PRESETS[1].value;
+const LANDTYPE_FORMAT_EXTENSIONS: Record<LandTypeExportFormat, string> = {
+  kml: '.kml',
+  kmz: '.kmz',
+  geojson: '.geojson',
+  tiff: '.tif',
+};
 
 interface ExportPanelProps {
   features: ParcelFeature[];
   isQuerying: boolean;
+  landTypeAvailable: boolean;
+  landTypeEnabled: boolean;
+  landTypeData: LandTypeFeatureCollection | null;
+  landTypeIsLoading: boolean;
 }
 
-export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
+export function ExportPanel({
+  features,
+  isQuerying,
+  landTypeAvailable,
+  landTypeEnabled,
+  landTypeData,
+  landTypeIsLoading,
+}: ExportPanelProps) {
   const [exportingKML, setExportingKML] = React.useState(false);
   const [exportingKMZ, setExportingKMZ] = React.useState(false);
   const [exportingGeoTIFF, setExportingGeoTIFF] = React.useState(false);
@@ -33,6 +61,13 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
   const [selectedColor, setSelectedColor] = React.useState<string>(DEFAULT_COLOR);
   const [hexInputValue, setHexInputValue] = React.useState<string>(DEFAULT_COLOR);
   const [activePreset, setActivePreset] = React.useState<string | 'custom'>(DEFAULT_COLOR);
+  const [landTypeFormat, setLandTypeFormat] = React.useState<LandTypeExportFormat>('kmz');
+  const [landTypeColorMode, setLandTypeColorMode] = React.useState<'preset' | 'byProperty'>('preset');
+  const [landTypePreset, setLandTypePreset] = React.useState<string>('subjects');
+  const [landTypeAlpha, setLandTypeAlpha] = React.useState<number>(180);
+  const [landTypePropertyKey, setLandTypePropertyKey] = React.useState<string>('');
+  const [landTypeFilename, setLandTypeFilename] = React.useState<string>('');
+  const [exportingLandType, setExportingLandType] = React.useState(false);
 
   const applyColor = React.useCallback((value: string, source: 'preset' | 'custom') => {
     const normalised = value.startsWith('#') ? value.toUpperCase() : `#${value.toUpperCase()}`;
@@ -70,6 +105,10 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
 
   const hasFeatures = features.length > 0;
   const totalArea = features.reduce((sum, f) => sum + (f.properties.area_ha || 0), 0);
+  const landTypeFeatureCount = landTypeData?.features?.length ?? 0;
+  const landTypeHasData = landTypeFeatureCount > 0;
+  const landTypeWarningsCombined = landTypeData?.properties?.warnings ?? [];
+  const landTypeMode = landTypeData?.properties?.mode ?? null;
 
   const downloadFile = (blob: Blob, filename: string) => {
     try {
@@ -257,6 +296,60 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
     }
   };
 
+  const handleLandTypeExport = async () => {
+    if (!landTypeAvailable) {
+      toast.error('LandType exports are not enabled in this environment.');
+      return;
+    }
+    if (!landTypeEnabled) {
+      toast.warning('Enable the LandType overlay on the map before exporting.');
+      return;
+    }
+    if (!landTypeHasData || !landTypeData) {
+      toast.warning('Load LandType polygons on the map before exporting.');
+      return;
+    }
+
+    if (landTypeColorMode === 'byProperty' && !landTypePropertyKey.trim()) {
+      toast.error('Provide a property field name when colouring by property.');
+      return;
+    }
+
+    setExportingLandType(true);
+    try {
+      const alpha = Math.max(0, Math.min(255, Number(landTypeAlpha) || 0));
+
+      const response = await apiClient.exportLandType({
+        features: landTypeData,
+        format: landTypeFormat,
+        styleOptions: {
+          colorMode: landTypeColorMode,
+          presetName: landTypeColorMode === 'preset' ? landTypePreset : undefined,
+          propertyKey: landTypeColorMode === 'byProperty' ? landTypePropertyKey.trim() || undefined : undefined,
+          alpha,
+        },
+        filenameTemplate: landTypeFilename.trim() || undefined,
+      });
+
+      const fallbackName = `landtype-export${LANDTYPE_FORMAT_EXTENSIONS[landTypeFormat]}`;
+      const downloadName = response.filename || fallbackName;
+      const success = downloadFile(response.blob, downloadName);
+
+      if (success) {
+        toast.success(`LandType ${landTypeFormat.toUpperCase()} downloaded successfully`);
+      } else {
+        toast.error('Failed to start LandType download. Check pop-up blockers or browser settings.');
+      }
+    } catch (error) {
+      console.error('LandType export failed:', error);
+      toast.error(
+        `LandType export failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    } finally {
+      setExportingLandType(false);
+    }
+  };
+
   const stateBreakdown = features.reduce((acc, feature) => {
     const state = feature.properties.state;
     acc[state] = (acc[state] || 0) + 1;
@@ -433,6 +526,180 @@ export function ExportPanel({ features, isQuerying }: ExportPanelProps) {
             <Image className="w-4 h-4 mr-2" />
             {exportingGeoTIFF ? 'Generating GeoTIFF...' : 'Download GeoTIFF (Beta)'}
           </Button>
+
+          {landTypeAvailable && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <Label className="text-sm font-medium flex items-center gap-2">
+                      <ArrowCircleDown className="w-4 h-4 text-primary" />
+                      LandType Export
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      {landTypeEnabled
+                        ? landTypeHasData
+                          ? `${landTypeFeatureCount} polygon${landTypeFeatureCount === 1 ? '' : 's'} ready from ${
+                              landTypeMode === 'bbox' ? 'map extent' : 'QLD lotplans'
+                            }.`
+                          : landTypeIsLoading
+                          ? 'LandType polygons loading…'
+                          : 'No LandType polygons loaded yet – refresh from the map controls.'
+                        : 'Enable the LandType overlay in the map to prepare polygons for export.'}
+                    </p>
+                  </div>
+                  {landTypeMode && (
+                    <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                      {landTypeMode === 'bbox' ? 'Map Extent' : 'Lotplans'}
+                    </Badge>
+                  )}
+                </div>
+
+                {landTypeWarningsCombined.map((warning, index) => (
+                  <div
+                    key={`landtype-warning-${index}`}
+                    className="flex items-start gap-2 text-[11px] text-amber-600"
+                  >
+                    <AlertTriangle className="w-4 h-4 mt-0.5" />
+                    <span>{warning}</span>
+                  </div>
+                ))}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Format</Label>
+                    <Select
+                      value={landTypeFormat}
+                      onValueChange={(value) =>
+                        setLandTypeFormat(value as LandTypeExportFormat)
+                      }
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="text-xs">
+                        <SelectItem value="kmz">KMZ (Google Earth Pro)</SelectItem>
+                        <SelectItem value="kml">KML (Google Earth Web)</SelectItem>
+                        <SelectItem value="geojson">GeoJSON</SelectItem>
+                        <SelectItem value="tiff">GeoTIFF</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Colour Strategy</Label>
+                    <Select
+                      value={landTypeColorMode}
+                      onValueChange={(value) =>
+                        setLandTypeColorMode(value as 'preset' | 'byProperty')
+                      }
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="text-xs">
+                        <SelectItem value="preset">Preset palette</SelectItem>
+                        <SelectItem value="byProperty">By property field</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {landTypeColorMode === 'preset' && (
+                  <div className="flex flex-wrap gap-4">
+                    {COLOR_PRESETS.map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => setLandTypePreset(preset.id)}
+                        className={cn(
+                          'flex flex-col items-center gap-1 text-[11px] transition-colors',
+                          landTypePreset === preset.id
+                            ? 'text-foreground font-medium'
+                            : 'text-muted-foreground',
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'h-8 w-8 rounded-full border border-border shadow-sm transition-all',
+                            landTypePreset === preset.id ? 'ring-2 ring-offset-2 ring-primary' : '',
+                          )}
+                          style={{ backgroundColor: preset.value }}
+                          aria-hidden
+                        />
+                        <span>{preset.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {landTypeColorMode === 'byProperty' && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="landtype-property" className="text-xs font-medium">
+                      Property field for colours
+                    </Label>
+                    <Input
+                      id="landtype-property"
+                      placeholder="e.g. lt_category"
+                      value={landTypePropertyKey}
+                      onChange={(event) => setLandTypePropertyKey(event.target.value)}
+                      className="text-sm"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Uses deterministic colours derived from each feature&apos;s property value.
+                    </p>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="landtype-alpha" className="text-xs font-medium">
+                      Fill opacity (0-255)
+                    </Label>
+                    <Input
+                      id="landtype-alpha"
+                      type="number"
+                      min={0}
+                      max={255}
+                      value={landTypeAlpha}
+                      onChange={(event) => setLandTypeAlpha(Number(event.target.value))}
+                      className="text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="landtype-filename" className="text-xs font-medium">
+                      Filename template
+                    </Label>
+                    <Input
+                      id="landtype-filename"
+                      placeholder="Optional base name"
+                      value={landTypeFilename}
+                      onChange={(event) => setLandTypeFilename(event.target.value)}
+                      className="text-sm"
+                      maxLength={100}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Template applied before extension; leave blank to auto-name.
+                    </p>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={handleLandTypeExport}
+                  disabled={
+                    !landTypeEnabled || !landTypeHasData || exportingLandType || landTypeIsLoading
+                  }
+                  className="w-full justify-start"
+                  variant="outline"
+                >
+                  <ArrowCircleDown className="w-4 h-4 mr-2" />
+                  {exportingLandType
+                    ? 'Generating LandType…'
+                    : `Download LandType ${landTypeFormat.toUpperCase()}`}
+                </Button>
+              </div>
+            </>
+          )}
         </div>
 
         {!hasFeatures && !isQuerying && (

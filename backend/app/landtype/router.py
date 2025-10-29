@@ -112,16 +112,12 @@ def _build_color_lookup(
         props["landtype_color"] = color_hex
         props["landtype_alpha"] = alpha
         props["color_hex"] = color_hex
-        props.setdefault(
-            "style",
-            {
-                "color": "#202020",
-                "weight": 1.5,
-                "fillColor": color_hex,
-                "fillOpacity": round(alpha / 255.0, 3),
-            },
-        )
-        props["landtype_alpha"] = alpha
+        style = dict(props.get("style") or {})
+        style.setdefault("color", "#202020")
+        style.setdefault("weight", 1.5)
+        style["fillColor"] = color_hex
+        style["fillOpacity"] = round(alpha / 255.0, 3)
+        props["style"] = style
         styled_features.append(
             {
                 "type": "Feature",
@@ -147,7 +143,7 @@ def _features_to_clipped(features: Dict[str, object]) -> Tuple[List[Tuple], List
         geometry = feature.get("geometry")
         if not geometry:
             continue
-        props = feature.get("properties") or {}
+        props = dict(feature.get("properties") or {})
         try:
             geom = shape(geometry)
         except Exception as exc:
@@ -155,17 +151,27 @@ def _features_to_clipped(features: Dict[str, object]) -> Tuple[List[Tuple], List
             continue
         if geom.is_empty:
             continue
-        code = str(props.get("code") or props.get("name") or props.get("id") or "Feature")
-        name = str(props.get("name") or code)
+        code = str(
+            props.get("code")
+            or props.get("lotplan")
+            or props.get("name")
+            or props.get("id")
+            or "Feature"
+        )
+        name = str(props.get("name") or props.get("display_name") or code)
         area_ha = props.get("area_ha")
         if area_ha is None:
             area_ha = _feature_area_hectares(geom)
+        props["code"] = code
+        props["name"] = name
+        props["area_ha"] = float(area_ha)
         clipped.append((geom, code, name, float(area_ha)))
         metadata.append(
             {
                 "code": code,
                 "geometry": geometry,
                 "properties": props,
+                "name": name,
             }
         )
 
@@ -173,6 +179,77 @@ def _features_to_clipped(features: Dict[str, object]) -> Tuple[List[Tuple], List
         raise HTTPException(status_code=400, detail="No valid geometries were supplied")
 
     return clipped, metadata
+
+
+def _clipped_to_feature_data(
+    clipped: Sequence[Tuple],
+    *,
+    lotplan: Optional[str],
+    source: str,
+) -> Tuple[List[Dict[str, object]], Dict[str, Dict[str, object]]]:
+    features: List[Dict[str, object]] = []
+    legend: Dict[str, Dict[str, object]] = {}
+    for geom, code, name, area_ha in clipped:
+        if geom is None or getattr(geom, "is_empty", False):
+            continue
+        try:
+            geom_mapping = mapping(geom)
+        except Exception:
+            continue
+        rgb = color_from_code(code)
+        color_hex = _rgb_to_hex(rgb)
+        properties: Dict[str, object] = {
+            "code": code,
+            "name": name,
+            "area_ha": float(area_ha),
+            "color_hex": color_hex,
+            "landtype_color": color_hex,
+            "landtype_alpha": DEFAULT_ALPHA,
+            "source": source,
+            "style": {
+                "color": "#202020",
+                "weight": 1.5,
+                "fillColor": color_hex,
+                "fillOpacity": round(DEFAULT_ALPHA / 255.0, 3),
+            },
+        }
+        if lotplan:
+            properties["lotplan"] = lotplan
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": geom_mapping,
+                "properties": properties,
+            }
+        )
+        legend_entry = legend.setdefault(
+            code,
+            {
+                "code": code,
+                "name": name,
+                "color_hex": color_hex,
+                "area_ha": 0.0,
+            },
+        )
+        legend_entry["area_ha"] = float(legend_entry.get("area_ha", 0.0)) + float(area_ha)
+    return features, legend
+
+
+def _merge_legends(
+    base: Dict[str, Dict[str, object]],
+    incoming: Dict[str, Dict[str, object]],
+) -> None:
+    for code, info in incoming.items():
+        entry = base.setdefault(
+            code,
+            {
+                "code": info.get("code"),
+                "name": info.get("name"),
+                "color_hex": info.get("color_hex"),
+                "area_ha": 0.0,
+            },
+        )
+        entry["area_ha"] = float(entry.get("area_ha", 0.0)) + float(info.get("area_ha", 0.0))
 
 
 @router.get("/health")
@@ -190,65 +267,102 @@ async def landtype_geojson(
     if not rate_limiter.is_allowed(client_ip):
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
-    parcels_fc = {"type": "FeatureCollection", "features": []}
     lotplan_list: List[str] = []
+    warnings: List[str] = []
 
     if lotplans:
         parsed, malformed = parse_qld(lotplans)
-        if malformed and not parsed:
+        if not parsed and malformed:
             raise HTTPException(status_code=400, detail=malformed[0].error)
-        lotplan_list = [entry.id for entry in parsed]
+        seen = set()
+        for entry in parsed:
+            if entry.id in seen:
+                continue
+            seen.add(entry.id)
+            lotplan_list.append(entry.id)
+        warnings.extend([f"Skipping '{item.raw}': {item.error}" for item in malformed])
+
+    features: List[Dict[str, object]] = []
+    legend_map: Dict[str, Dict[str, object]] = {}
+    selection_mode = "lotplans" if lotplan_list else "bbox"
+    bbox_values: Optional[List[float]] = None
 
     if lotplan_list:
-        landtype_features = []
         for lotplan in lotplan_list:
             parcel_fc = fetch_parcel_geojson(lotplan)
-            if not parcel_fc.get("features"):
+            parcel_features = parcel_fc.get("features") or []
+            if not parcel_features:
+                warnings.append(f"No parcel geometry returned for {lotplan}")
                 continue
-            parcels_fc["features"].extend(parcel_fc.get("features", []))
             parcel_union = to_shapely_union(parcel_fc)
+            if parcel_union.is_empty:
+                warnings.append(f"Parcel geometry invalid for {lotplan}")
+                continue
             env_3857 = bbox_3857(parcel_union)
             landtypes = fetch_landtypes_intersecting_envelope(env_3857)
             clipped = prepare_clipped_shapes(parcel_fc, landtypes)
-            for geom, code, name, area_ha in clipped:
-                landtype_features.append(
-                    {
-                        "type": "Feature",
-                        "geometry": mapping(geom),
-                        "properties": {
-                            "code": code,
-                            "name": name,
-                            "area_ha": area_ha,
-                            "lotplan": lotplan,
-                        },
-                    }
-                )
-        feature_collection = {
-            "type": "FeatureCollection",
-            "features": landtype_features,
-        }
+            if not clipped:
+                warnings.append(f"No land types intersect {lotplan}")
+                continue
+            lotplan_features, legend_entries = _clipped_to_feature_data(
+                clipped,
+                lotplan=lotplan,
+                source="lotplans",
+            )
+            features.extend(lotplan_features)
+            _merge_legends(legend_map, legend_entries)
     elif bbox:
         try:
             west, south, east, north = [float(part) for part in bbox.split(",")]
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid bbox format")
 
+        bbox_values = [west, south, east, north]
         bbox_geom = box(west, south, east, north)
-        bbox_fc = {
+        selection_fc = {
             "type": "FeatureCollection",
             "features": [
                 {
                     "type": "Feature",
                     "geometry": mapping(bbox_geom),
+                    "properties": {"code": "bbox"},
                 }
             ],
         }
-        parcels_fc = bbox_fc
         env_3857 = bbox_3857(bbox_geom)
-        clipped_fc = fetch_landtypes_intersecting_envelope(env_3857)
-        feature_collection = clipped_fc
+        landtypes = fetch_landtypes_intersecting_envelope(env_3857)
+        clipped = prepare_clipped_shapes(selection_fc, landtypes)
+        bbox_features, legend_entries = _clipped_to_feature_data(
+            clipped,
+            lotplan=None,
+            source="bbox",
+        )
+        features.extend(bbox_features)
+        _merge_legends(legend_map, legend_entries)
     else:
         raise HTTPException(status_code=400, detail="Provide lotplans or bbox")
+
+    feature_collection: Dict[str, object] = {
+        "type": "FeatureCollection",
+        "features": features,
+        "properties": {
+            "styleOptions": {
+                "colorMode": "preset",
+                "presetName": DEFAULT_PRESET,
+                "alpha": DEFAULT_ALPHA,
+            },
+            "legend": sorted(
+                legend_map.values(),
+                key=lambda entry: (-float(entry.get("area_ha", 0.0)), entry.get("code") or ""),
+            ),
+            "lotplans": lotplan_list,
+            "mode": selection_mode,
+            "warnings": warnings,
+        },
+    }
+
+    if bbox_values:
+        feature_collection["properties"]["bbox"] = bbox_values
 
     return feature_collection
 
@@ -298,9 +412,19 @@ async def landtype_export(request: LandTypeExportRequest, http_request: Request)
     if request.format == "geojson":
         styled_fc = dict(request.features)
         styled_fc["features"] = styled_features
+        properties = dict(styled_fc.get("properties") or {})
+        properties["styleOptions"] = {
+            "colorMode": request.styleOptions.colorMode,
+            "presetName": request.styleOptions.presetName or DEFAULT_PRESET,
+            "propertyKey": request.styleOptions.propertyKey,
+            "alpha": alpha,
+        }
+        styled_fc["properties"] = properties
+        file_name = sanitize_export_filename(f"{sanitized_base}", ".geojson") or "landtype.geojson"
         return Response(
             content=json.dumps(styled_fc),
             media_type="application/geo+json",
+            headers={"Content-Disposition": build_content_disposition(file_name)},
         )
 
     if request.format == "tiff":

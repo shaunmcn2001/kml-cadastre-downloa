@@ -1,6 +1,7 @@
+import importlib
 import json
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
 from app.main import app
 
@@ -46,7 +47,7 @@ def test_landtype_health():
     [
         ("kml", "application/vnd.google-earth.kml+xml", ".kml"),
         ("kmz", "application/vnd.google-earth.kmz", ".kmz"),
-        ("geojson", "application/geo+json", ".json"),
+        ("geojson", "application/geo+json", ".geojson"),
         ("tiff", "image/tiff", ".tif"),
     ],
 )
@@ -119,11 +120,37 @@ def test_landtype_geojson_lotplan(monkeypatch):
             ],
         }
 
-    monkeypatch.setattr("app.landtype.router.fetch_parcel_geojson", fake_fetch_parcel_geojson)
-    monkeypatch.setattr("app.landtype.router.fetch_landtypes_intersecting_envelope", fake_fetch_landtypes)
+    router_module = importlib.import_module("app.landtype.router")
+    monkeypatch.setattr(router_module, "fetch_parcel_geojson", fake_fetch_parcel_geojson)
+    monkeypatch.setattr(
+        router_module,
+        "fetch_landtypes_intersecting_envelope",
+        fake_fetch_landtypes,
+    )
+    from shapely.geometry import Polygon
+
+    sample_geom = Polygon(
+        [
+            (153.0, -27.0),
+            (153.0, -27.05),
+            (153.05, -27.05),
+            (153.05, -27.0),
+        ]
+    )
+
+    def fake_prepare(parcel_fc, thematic_fc):
+        return [(sample_geom, "LT01", "Land Type", 1.23)]
+
+    monkeypatch.setattr(router_module, "prepare_clipped_shapes", fake_prepare)
 
     response = client.get("/landtype/geojson", params={"lotplans": "1RP12345"})
     assert response.status_code == 200
     data = response.json()
     assert data["type"] == "FeatureCollection"
     assert len(data["features"]) == 1
+    feature_props = data["features"][0]["properties"]
+    assert feature_props["code"] == "LT01"
+    assert feature_props["lotplan"] == "1RP12345"
+    assert feature_props["style"]["fillColor"].startswith("#")
+    legend = data["properties"]["legend"]
+    assert legend and legend[0]["code"] == "LT01"

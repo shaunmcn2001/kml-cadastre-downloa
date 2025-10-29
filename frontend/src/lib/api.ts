@@ -11,7 +11,10 @@ import type {
   DebugEntry,
   PropertyLayerMeta,
   PropertyReportRequest,
-  PropertyReportResponse
+  PropertyReportResponse,
+  LandTypeFeatureCollection,
+  LandTypeExportRequest,
+  LandTypeExportResponse
 } from './types';
 
 function extractFilenameFromDisposition(disposition: string | null): string | null {
@@ -240,6 +243,104 @@ class ApiClient {
 
       debugEntry.error = errorMessage;
       throw new Error(errorMessage);
+    } finally {
+      clearTimeout(timeout);
+      this.debugEntries.push(debugEntry);
+      this.notifyDebugListeners();
+    }
+  }
+
+  async fetchLandTypeGeojson(params: {
+    lotplans?: string[];
+    bbox?: [number, number, number, number];
+  }): Promise<LandTypeFeatureCollection> {
+    const query = new URLSearchParams();
+    if (params.lotplans && params.lotplans.length > 0) {
+      query.set('lotplans', params.lotplans.join(','));
+    }
+    if (params.bbox) {
+      query.set('bbox', params.bbox.join(','));
+    }
+    const suffix = query.toString();
+    const endpoint = `/landtype/geojson${suffix ? `?${suffix}` : ''}`;
+    return this.makeRequest<LandTypeFeatureCollection>('GET', endpoint);
+  }
+
+  async exportLandType(request: LandTypeExportRequest): Promise<LandTypeExportResponse> {
+    const config = getConfig();
+    const url = `${config.BACKEND_URL}/landtype/export`;
+
+    const debugEntry: DebugEntry = {
+      timestamp: new Date(),
+      method: 'POST',
+      url,
+    };
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45000);
+
+    try {
+      const startTime = Date.now();
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': '*/*',
+        },
+        body: JSON.stringify(request),
+        signal: controller.signal,
+        mode: 'cors',
+        credentials: 'omit',
+      });
+
+      debugEntry.duration = Date.now() - startTime;
+      debugEntry.status = response.status;
+
+      if (!response.ok) {
+        let errorData: ApiError;
+        try {
+          errorData = await response.json();
+        } catch {
+          errorData = {
+            error: `HTTP ${response.status}`,
+            detail: response.statusText,
+          };
+        }
+        debugEntry.error = `${errorData.error}: ${errorData.detail}`;
+        throw new Error(`LandType export failed (${response.status}): ${errorData.detail || errorData.error}`);
+      }
+
+      const blob = await response.blob();
+      const contentDisposition = response.headers.get('content-disposition');
+      const contentType = response.headers.get('content-type');
+
+      const fallbackFilenames: Record<string, string> = {
+        kml: 'landtype-export.kml',
+        kmz: 'landtype-export.kmz',
+        geojson: 'landtype-export.geojson',
+        tiff: 'landtype-export.tif',
+      };
+      const filename =
+        extractFilenameFromDisposition(contentDisposition) ||
+        fallbackFilenames[request.format] ||
+        'landtype-export';
+
+      return {
+        blob,
+        filename,
+        contentType,
+      };
+    } catch (error) {
+      let message = 'Unknown error';
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          message = 'LandType export timed out';
+        } else {
+          message = error.message;
+        }
+      }
+      debugEntry.error = message;
+      throw new Error(message);
     } finally {
       clearTimeout(timeout);
       this.debugEntries.push(debugEntry);

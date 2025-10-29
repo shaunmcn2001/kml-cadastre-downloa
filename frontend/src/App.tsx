@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { Toaster } from '@/components/ui/sonner';
 import { ParcelInputPanel } from './components/ParcelInputPanel';
 import { MapView } from './components/MapView';
@@ -8,7 +8,12 @@ import { ConnectionTroubleshooter } from './components/ConnectionTroubleshooter'
 import { loadConfig } from './lib/config';
 import { apiClient } from './lib/api';
 import { toast } from 'sonner';
-import type { ParcelFeature, ParcelState } from './lib/types';
+import type {
+  ParcelFeature,
+  ParcelState,
+  LandTypeFeatureCollection,
+  LandTypeLegendEntry,
+} from './lib/types';
 import { PropertyReportsView } from './views/PropertyReportsView';
 import { SmartMapsView } from './views/SmartMapsView';
 import { ComingSoonView } from './views/ComingSoonView';
@@ -19,6 +24,13 @@ function App() {
   const [isQuerying, setIsQuerying] = useState(false);
   const [backendError, setBackendError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<'cadastre' | 'property-reports' | 'grazing-maps' | 'smartmaps'>('cadastre');
+  const [landTypeAvailable, setLandTypeAvailable] = useState(false);
+  const [landTypeEnabled, setLandTypeEnabled] = useState(false);
+  const [landTypeData, setLandTypeData] = useState<LandTypeFeatureCollection | null>(null);
+  const [landTypeIsLoading, setLandTypeIsLoading] = useState(false);
+  const [landTypeSource, setLandTypeSource] = useState<'lotplans' | 'bbox'>('lotplans');
+  const [landTypeLastBbox, setLandTypeLastBbox] = useState<[number, number, number, number] | null>(null);
+  const lastLandTypeKeyRef = useRef<string | null>(null);
   const navIndicatorRef = useRef<HTMLSpanElement | null>(null);
   const navButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const navItems: Array<{ key: typeof activeView; label: string }> = [
@@ -69,7 +81,14 @@ function App() {
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        await loadConfig();
+        const cfg = await loadConfig();
+        const landTypeFlag = Boolean(cfg.features?.landtypeEnabled);
+        setLandTypeAvailable(landTypeFlag);
+        if (!landTypeFlag) {
+          setLandTypeEnabled(false);
+          setLandTypeData(null);
+          lastLandTypeKeyRef.current = null;
+        }
         
         // Test backend connectivity with retry
         let retryCount = 0;
@@ -141,6 +160,178 @@ function App() {
       setIsQuerying(false);
     }
   };
+
+  const landTypeLotPlans = useMemo(() => {
+    const ids = new Set<string>();
+    for (const feature of features) {
+      if (feature.properties.state !== 'QLD') {
+        continue;
+      }
+      const props = feature.properties;
+      const candidate =
+        (props.lotplan ??
+          (props as any).LOTPLAN ??
+          props.lotPlan ??
+          props.id ??
+          props.name ??
+          '') as string;
+      const normalized = String(candidate).replace(/\s+/g, '').toUpperCase();
+      if (!normalized) {
+        continue;
+      }
+      ids.add(normalized);
+    }
+    return Array.from(ids);
+  }, [features]);
+
+  const landTypeLotPlanKey = useMemo(() => landTypeLotPlans.join('|'), [landTypeLotPlans]);
+
+  const fetchLandTypeData = useCallback(
+    async (
+      params: {
+        lotplans?: string[];
+        bbox?: [number, number, number, number];
+      },
+      options?: { force?: boolean },
+    ) => {
+      if (!landTypeAvailable) {
+        return;
+      }
+      const key = params.lotplans
+        ? `lotplans|${params.lotplans.join('|')}`
+        : params.bbox
+        ? `bbox|${params.bbox.join(',')}`
+        : 'none';
+      if (!options?.force && lastLandTypeKeyRef.current === key) {
+        return;
+      }
+      lastLandTypeKeyRef.current = key;
+      setLandTypeIsLoading(true);
+      try {
+        const data = await apiClient.fetchLandTypeGeojson(params);
+        setLandTypeData(data);
+      } catch (error) {
+        console.error('LandType query failed:', error);
+        toast.error(
+          `LandType query failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        );
+      } finally {
+        setLandTypeIsLoading(false);
+      }
+    },
+    [landTypeAvailable],
+  );
+
+  const handleLandTypeToggle = useCallback(
+    (enabled: boolean) => {
+      if (enabled && !landTypeAvailable) {
+        toast.error('LandType workflow is disabled in this deployment.');
+        return;
+      }
+      setLandTypeEnabled(enabled);
+      if (!enabled) {
+        setLandTypeData(null);
+        lastLandTypeKeyRef.current = null;
+        return;
+      }
+      if (landTypeSource === 'lotplans') {
+        if (landTypeLotPlans.length === 0) {
+          toast.warning('No QLD lotplans available for LandType.');
+          setLandTypeData(null);
+          return;
+        }
+        fetchLandTypeData({ lotplans: landTypeLotPlans }, { force: true });
+      } else if (landTypeLastBbox) {
+        fetchLandTypeData({ bbox: landTypeLastBbox }, { force: true });
+      } else {
+        toast.info('Pan/zoom the map and refresh LandType for the current extent.');
+      }
+    },
+    [
+      landTypeAvailable,
+      landTypeLotPlans,
+      landTypeSource,
+      landTypeLastBbox,
+      fetchLandTypeData,
+    ],
+  );
+
+  const handleLandTypeSourceChange = useCallback((source: 'lotplans' | 'bbox') => {
+    setLandTypeSource(source);
+  }, []);
+
+  const handleLandTypeRefresh = useCallback(() => {
+    if (!landTypeAvailable || !landTypeEnabled) {
+      toast.warning('Enable the LandType overlay on the map before exporting.');
+      return;
+    }
+    if (landTypeSource === 'lotplans') {
+      if (landTypeLotPlans.length === 0) {
+        toast.warning('No QLD lotplans available to refresh.');
+        return;
+      }
+      fetchLandTypeData({ lotplans: landTypeLotPlans }, { force: true });
+    } else {
+      if (!landTypeLastBbox) {
+        toast.info('Pan/zoom the map and refresh LandType to capture the current extent.');
+        return;
+      }
+      fetchLandTypeData({ bbox: landTypeLastBbox }, { force: true });
+    }
+  }, [
+    landTypeAvailable,
+    landTypeEnabled,
+    landTypeSource,
+    landTypeLotPlans,
+    landTypeLastBbox,
+    fetchLandTypeData,
+  ]);
+
+  const handleLandTypeRefreshBbox = useCallback(
+    (bbox: [number, number, number, number]) => {
+      setLandTypeSource('bbox');
+      setLandTypeLastBbox(bbox);
+      if (landTypeEnabled) {
+        fetchLandTypeData({ bbox }, { force: true });
+      }
+    },
+    [fetchLandTypeData, landTypeEnabled],
+  );
+
+  useEffect(() => {
+    if (!landTypeAvailable || !landTypeEnabled) {
+      return;
+    }
+    if (landTypeSource === 'lotplans') {
+      if (landTypeLotPlans.length === 0) {
+        setLandTypeData(null);
+        lastLandTypeKeyRef.current = null;
+        return;
+      }
+      fetchLandTypeData({ lotplans: landTypeLotPlans });
+    } else if (landTypeSource === 'bbox') {
+      if (landTypeLastBbox) {
+        fetchLandTypeData({ bbox: landTypeLastBbox });
+      }
+    }
+  }, [
+    landTypeAvailable,
+    landTypeEnabled,
+    landTypeSource,
+    landTypeLotPlanKey,
+    landTypeLotPlans,
+    landTypeLastBbox,
+    fetchLandTypeData,
+  ]);
+
+  const landTypeLegend = useMemo<LandTypeLegendEntry[]>(
+    () => landTypeData?.properties?.legend ?? [],
+    [landTypeData],
+  );
+  const landTypeWarnings = useMemo(
+    () => landTypeData?.properties?.warnings ?? [],
+    [landTypeData],
+  );
 
   if (isLoading) {
     return (
@@ -214,7 +405,22 @@ function App() {
       {activeView === 'cadastre' && (
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1 p-4">
-            <MapView features={features} isLoading={isQuerying} />
+            <MapView
+              features={features}
+              isLoading={isQuerying}
+              landTypeAvailable={landTypeAvailable}
+              landTypeEnabled={landTypeEnabled}
+              landTypeIsLoading={landTypeIsLoading}
+              landTypeData={landTypeData}
+              landTypeLegend={landTypeLegend}
+              landTypeWarnings={landTypeWarnings}
+              landTypeSource={landTypeSource}
+              landTypeLotPlans={landTypeLotPlans}
+              onLandTypeToggle={handleLandTypeToggle}
+              onLandTypeSourceChange={handleLandTypeSourceChange}
+              onLandTypeRefresh={handleLandTypeRefresh}
+              onLandTypeRefreshBbox={handleLandTypeRefreshBbox}
+            />
           </div>
 
           <div className="w-96 border-l bg-card flex flex-col max-h-full">
@@ -228,6 +434,10 @@ function App() {
                 <ExportPanel 
                   features={features}
                   isQuerying={isQuerying}
+                  landTypeAvailable={landTypeAvailable}
+                  landTypeEnabled={landTypeEnabled}
+                  landTypeData={landTypeData}
+                  landTypeIsLoading={landTypeIsLoading}
                 />
               </div>
             </div>
