@@ -10,6 +10,7 @@ import { apiClient } from './lib/api';
 import { toast } from 'sonner';
 import type { ParcelFeature, ParcelState } from './lib/types';
 import { PropertyReportsView } from './views/PropertyReportsView';
+import { SmartMapsView } from './views/SmartMapsView';
 import { ComingSoonView } from './views/ComingSoonView';
 
 function App() {
@@ -17,13 +18,14 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isQuerying, setIsQuerying] = useState(false);
   const [backendError, setBackendError] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<'cadastre' | 'property-reports' | 'grazing-maps'>('cadastre');
+  const [activeView, setActiveView] = useState<'cadastre' | 'property-reports' | 'grazing-maps' | 'smartmaps'>('cadastre');
   const navIndicatorRef = useRef<HTMLSpanElement | null>(null);
   const navButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const navItems: Array<{ key: typeof activeView; label: string }> = [
     { key: 'cadastre', label: 'Cadastre' },
     { key: 'property-reports', label: 'Property Reports' },
     { key: 'grazing-maps', label: 'Grazing Maps' },
+    { key: 'smartmaps', label: 'SmartMaps' },
   ];
 
   const updateNavIndicator = useCallback(() => {
@@ -178,7 +180,7 @@ function App() {
             </div>
           </div>
           <nav className="relative flex justify-center">
-            <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-6 sm:-translate-y-8">
+            <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-8 sm:-translate-y-10">
               <div className="relative inline-flex items-center rounded-full bg-muted/20 px-1 py-1 shadow-lg shadow-primary/20 backdrop-blur">
                 <span
                   ref={navIndicatorRef}
@@ -245,6 +247,7 @@ function App() {
           description="Layer selections and grazing-specific analytics will live here."
         />
       )}
+      {activeView === 'smartmaps' && <SmartMapsView />}
       <Toaster />
     </div>
   );

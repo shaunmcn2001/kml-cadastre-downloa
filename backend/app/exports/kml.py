@@ -567,15 +567,15 @@ def _add_features_to_container(container, features: List[Feature], style):
         layer_label = _clean_text(raw_layer_label).lower()
 
         if layer_id:
-        if layer_id == "bores" or "bore" in layer_label:
-            return _format_bore_popup(data)
-        if (
-            layer_id == "watercourses"
-            or layer_id.startswith("water-")
-            or "water" in layer_label
-        ):
-            return _format_water_popup(data)
-        return _format_generic_popup(data)
+            if layer_id == "bores" or "bore" in layer_label:
+                return _format_bore_popup(data)
+            if (
+                layer_id == "watercourses"
+                or layer_id.startswith("water-")
+                or "water" in layer_label
+            ):
+                return _format_water_popup(data)
+            return _format_generic_popup(data)
 
         if layer_label:
             if "bore" in layer_label:

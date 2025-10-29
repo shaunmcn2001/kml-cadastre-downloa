@@ -125,6 +125,25 @@ export function PropertyReportsView() {
     }));
   };
 
+  const datasetGroups = useMemo(() => {
+    const groups = new Map<string, PropertyLayerMeta[]>();
+    datasets.forEach((dataset) => {
+      const key = dataset.group || 'Other';
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key)!.push(dataset);
+    });
+    const order = ['Polygons', 'Water', 'Points', 'Other'];
+    return Array.from(groups.entries())
+      .map(([group, items]) => ({
+        group,
+        items,
+        order: order.includes(group) ? order.indexOf(group) : order.length,
+      }))
+      .sort((a, b) => a.order - b.order || a.group.localeCompare(b.group));
+  }, [datasets]);
+
   return (
     <div className="flex-1 flex overflow-hidden">
       <div className="flex-1 p-4">

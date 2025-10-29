@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import uuid
@@ -17,6 +18,7 @@ from .models import (
     PropertyLayerInfo, PropertyReportRequest, PropertyReportResponse
 )
 from .parsers import parse_parcel_input
+from .parsers.qld import parse_qld
 from .arcgis import query_parcels_bulk, ArcGISClient, ArcGISError
 from .merge import dissolve_features, simplify_features
 from .exports.kml import export_kml
@@ -26,6 +28,7 @@ from .utils.logging import setup_logging, get_logger
 from .utils.cache import get_cache
 from .utils.rate_limit import get_rate_limiter
 from .property_report import generate_property_report, list_property_layers
+from .smartmaps import generate_smartmap_zip, SmartMapDownloadError
 
 # Environment configuration
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
@@ -62,6 +65,10 @@ cache = get_cache(ttl=CACHE_TTL)
 rate_limiter = get_rate_limiter(max_requests=100, window_seconds=60)
 
 _FILENAME_SANITIZE_PATTERN = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+class SmartMapRequest(BaseModel):
+    lotPlans: List[str]
 
 
 def _sanitize_export_filename(value: Optional[str], extension: str) -> Optional[str]:
@@ -217,6 +224,43 @@ async def property_report_query(request: PropertyReportRequest, req: Request):
     except Exception as exc:
         logger.error("Property report generation failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to generate property report")
+
+
+@app.post("/api/smartmaps/download")
+async def smartmaps_download(request: SmartMapRequest, req: Request):
+    client_ip = req.client.host if req.client else "unknown"
+    if not rate_limiter.is_allowed(client_ip):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+
+    if not request.lotPlans:
+        raise HTTPException(status_code=400, detail="At least one lot/plan must be provided")
+
+    joined_input = "\n".join(request.lotPlans)
+    valid, malformed = parse_qld(joined_input)
+
+    if not valid:
+        detail = malformed[0].error if malformed else "No valid QLD lotplans supplied"
+        raise HTTPException(status_code=400, detail=detail)
+
+    try:
+        zip_bytes, failures = await generate_smartmap_zip(valid)
+    except SmartMapDownloadError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.error("SmartMap generation failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to generate SmartMaps")
+
+    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    filename = f"smartmaps-qld-{timestamp}.zip"
+    headers = {"Content-Disposition": _build_content_disposition(filename)}
+    if failures:
+        headers["X-SmartMap-Failures"] = json.dumps(failures)
+
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers=headers,
+    )
 
 
 @app.get("/ui", response_class=HTMLResponse)
