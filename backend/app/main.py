@@ -8,6 +8,7 @@ from urllib.parse import quote
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
+from pydantic import BaseModel
 import uvicorn
 import httpx
 
