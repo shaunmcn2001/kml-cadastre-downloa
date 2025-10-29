@@ -226,6 +226,8 @@ def build_kml(
     point_folder_name: Optional[str] = None,
     **kwargs,
 ) -> str:
+    alpha_value = int(kwargs.pop("alpha", 180))
+    alpha_value = max(0, min(255, alpha_value))
     folder_label = html.escape(folder_name or "Export")
     point_list = list(point_placemarks or [])
     point_styles = _collect_point_styles(point_list)
@@ -235,7 +237,7 @@ def build_kml(
         if code in styles:
             continue
         rgb = color_fn(code)
-        styles[code] = _kml_color_abgr_with_alpha(rgb, alpha=180)
+        styles[code] = _kml_color_abgr_with_alpha(rgb, alpha=alpha_value)
 
     style_xml: list[str] = []
     for code, kml_color in styles.items():

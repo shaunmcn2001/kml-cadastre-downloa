@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 import rasterio
@@ -13,7 +13,14 @@ from shapely.geometry import mapping
 from .colors import color_from_code
 
 
-def make_geotiff_rgba(clipped: List[tuple], out_path: str, max_px: int = 4096) -> Dict[str, Any]:
+def make_geotiff_rgba(
+    clipped: List[tuple],
+    out_path: str,
+    *,
+    max_px: int = 4096,
+    color_lookup: Optional[Mapping[str, Tuple[int, int, int]]] = None,
+    alpha: int = 200,
+) -> Dict[str, Any]:
     """
     Rasterize the clipped polygons (EPSG:4326) into an RGBA GeoTIFF in EPSG:4326.
     Each tuple: (geom4326, code, name, area_ha). Colors are derived from code.
@@ -54,8 +61,14 @@ def make_geotiff_rgba(clipped: List[tuple], out_path: str, max_px: int = 4096) -
     A = np.zeros((height, width), dtype=np.uint8)
 
     # Paint in order; later features overwrite earlier ones
+    alpha = max(0, min(255, int(alpha)))
+
     for geom, code, name, area_ha in clipped:
-        color = color_from_code(code)
+        color: Optional[Tuple[int, int, int]] = None
+        if color_lookup:
+            color = color_lookup.get(code)
+        if color is None:
+            color = color_from_code(code)
         mask = rasterize(
             [(mapping(geom), 1)],
             out_shape=(height, width),
@@ -67,7 +80,7 @@ def make_geotiff_rgba(clipped: List[tuple], out_path: str, max_px: int = 4096) -
         R[mask == 1] = int(color[0])
         G[mask == 1] = int(color[1])
         B[mask == 1] = int(color[2])
-        A[mask == 1] = 200  # semi-opaque
+        A[mask == 1] = alpha  # semi-opaque
 
     profile = {
         "driver": "GTiff",

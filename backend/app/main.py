@@ -1,10 +1,7 @@
 import json
-import os
-import re
 import uuid
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from urllib.parse import quote
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
@@ -26,17 +23,20 @@ from .exports.kml import export_kml
 from .exports.kmz import export_kmz  
 from .exports.tiff import export_geotiff
 from .utils.logging import setup_logging, get_logger
-from .utils.cache import get_cache
-from .utils.rate_limit import get_rate_limiter
 from .property_report import generate_property_report, list_property_layers
 from .smartmaps import generate_smartmap_zip, SmartMapDownloadError
-
-# Environment configuration
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
-CACHE_TTL = int(os.getenv("CACHE_TTL", "900"))
-MAX_IDS_PER_CHUNK = int(os.getenv("MAX_IDS_PER_CHUNK", "50"))
-ARCGIS_TIMEOUT = int(os.getenv("ARCGIS_TIMEOUT_S", "20"))
+from .landtype import router as landtype_router
+from .settings import (
+    LOG_LEVEL,
+    FRONTEND_ORIGIN,
+    CACHE_TTL,
+    MAX_IDS_PER_CHUNK,
+    ARCGIS_TIMEOUT,
+    cache,
+    rate_limiter,
+    sanitize_export_filename,
+    build_content_disposition,
+)
 
 # Setup logging
 setup_logging(LOG_LEVEL)
@@ -51,6 +51,8 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+app.include_router(landtype_router, prefix="/landtype", tags=["landtype"])
+
 # CORS configuration
 origins = [origin.strip() for origin in FRONTEND_ORIGIN.split(",")]
 app.add_middleware(
@@ -61,45 +63,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize services
-cache = get_cache(ttl=CACHE_TTL)
-rate_limiter = get_rate_limiter(max_requests=100, window_seconds=60)
-
-_FILENAME_SANITIZE_PATTERN = re.compile(r"[^A-Za-z0-9._-]+")
-
-
 class SmartMapRequest(BaseModel):
     lotPlans: List[str]
-
-
-def _sanitize_export_filename(value: Optional[str], extension: str) -> Optional[str]:
-    if not value:
-        return None
-
-    trimmed = value.strip()
-    if not trimmed:
-        return None
-
-    if trimmed.lower().endswith(extension.lower()):
-        trimmed = trimmed[: -len(extension)]
-
-    cleaned = _FILENAME_SANITIZE_PATTERN.sub('-', trimmed)
-    cleaned = re.sub(r"-{2,}", '-', cleaned)
-    cleaned = cleaned.strip('-_.')
-
-    if not cleaned:
-        return None
-
-    # Limit filename length to avoid excessively long headers
-    cleaned = cleaned[:100]
-
-    return f"{cleaned}{extension}"
-
-
-def _build_content_disposition(filename: str) -> str:
-    safe = filename.replace('"', '')
-    utf8 = quote(safe)
-    return f"attachment; filename=\"{safe}\"; filename*=UTF-8''{utf8}"
 
 @app.middleware("http")
 async def request_logging_middleware(request: Request, call_next):
@@ -253,7 +218,7 @@ async def smartmaps_download(request: SmartMapRequest, req: Request):
 
     timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
     filename = f"smartmaps-qld-{timestamp}.zip"
-    headers = {"Content-Disposition": _build_content_disposition(filename)}
+    headers = {"Content-Disposition": build_content_disposition(filename)}
     if failures:
         headers["X-SmartMap-Failures"] = json.dumps(failures)
 
@@ -1105,7 +1070,7 @@ async def export_kml_endpoint(request: ExportRequest, req: Request):
     
     try:
         kml_content = export_kml(request.features, request.styleOptions)
-        filename = _sanitize_export_filename(request.fileName, ".kml")
+        filename = sanitize_export_filename(request.fileName, ".kml")
         if not filename:
             filename = f"parcels-{datetime.now().strftime('%Y%m%d')}.kml"
 
@@ -1113,7 +1078,7 @@ async def export_kml_endpoint(request: ExportRequest, req: Request):
             content=kml_content,
             media_type="application/vnd.google-earth.kml+xml",
             headers={
-                "Content-Disposition": _build_content_disposition(filename)
+                "Content-Disposition": build_content_disposition(filename)
             }
         )
     except Exception as e:
@@ -1133,7 +1098,7 @@ async def export_kmz_endpoint(request: ExportRequest, req: Request):
     
     try:
         kmz_content = export_kmz(request.features, request.styleOptions)
-        filename = _sanitize_export_filename(request.fileName, ".kmz")
+        filename = sanitize_export_filename(request.fileName, ".kmz")
         if not filename:
             filename = f"parcels-{datetime.now().strftime('%Y%m%d')}.kmz"
 
@@ -1141,7 +1106,7 @@ async def export_kmz_endpoint(request: ExportRequest, req: Request):
             content=kmz_content,
             media_type="application/vnd.google-earth.kmz",
             headers={
-                "Content-Disposition": _build_content_disposition(filename)
+                "Content-Disposition": build_content_disposition(filename)
             }
         )
     except Exception as e:
