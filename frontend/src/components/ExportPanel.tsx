@@ -44,6 +44,7 @@ interface ExportPanelProps {
   landTypeEnabled: boolean;
   landTypeData: LandTypeFeatureCollection | null;
   landTypeIsLoading: boolean;
+  showLandTypeExport?: boolean;
 }
 
 export function ExportPanel({
@@ -53,6 +54,7 @@ export function ExportPanel({
   landTypeEnabled,
   landTypeData,
   landTypeIsLoading,
+  showLandTypeExport = true,
 }: ExportPanelProps) {
   const [exportingKML, setExportingKML] = React.useState(false);
   const [exportingKMZ, setExportingKMZ] = React.useState(false);
@@ -105,6 +107,7 @@ export function ExportPanel({
 
   const hasFeatures = features.length > 0;
   const totalArea = features.reduce((sum, f) => sum + (f.properties.area_ha || 0), 0);
+  const landTypeSectionVisible = showLandTypeExport && landTypeAvailable;
   const landTypeFeatureCount = landTypeData?.features?.length ?? 0;
   const landTypeHasData = landTypeFeatureCount > 0;
   const landTypeWarningsCombined = landTypeData?.properties?.warnings ?? [];
@@ -297,7 +300,7 @@ export function ExportPanel({
   };
 
   const handleLandTypeExport = async () => {
-    if (!landTypeAvailable) {
+    if (!landTypeSectionVisible) {
       toast.error('LandType exports are not enabled in this environment.');
       return;
     }
@@ -527,7 +530,7 @@ export function ExportPanel({
             {exportingGeoTIFF ? 'Generating GeoTIFF...' : 'Download GeoTIFF (Beta)'}
           </Button>
 
-          {landTypeAvailable && (
+          {landTypeSectionVisible && (
             <>
               <Separator />
               <div className="space-y-3">

@@ -332,6 +332,15 @@ function App() {
     () => landTypeData?.properties?.warnings ?? [],
     [landTypeData],
   );
+  const isPropertyReportsView = activeView === 'property-reports';
+
+  useEffect(() => {
+    if (!isPropertyReportsView) {
+      setLandTypeEnabled(false);
+      setLandTypeData(null);
+      lastLandTypeKeyRef.current = null;
+    }
+  }, [isPropertyReportsView]);
 
   if (isLoading) {
     return (
@@ -420,6 +429,7 @@ function App() {
               onLandTypeSourceChange={handleLandTypeSourceChange}
               onLandTypeRefresh={handleLandTypeRefresh}
               onLandTypeRefreshBbox={handleLandTypeRefreshBbox}
+              showLandTypeControls={false}
             />
           </div>
 
@@ -438,6 +448,7 @@ function App() {
                   landTypeEnabled={landTypeEnabled}
                   landTypeData={landTypeData}
                   landTypeIsLoading={landTypeIsLoading}
+                  showLandTypeExport={false}
                 />
               </div>
             </div>

@@ -56,6 +56,7 @@ interface MapViewProps {
   onLandTypeSourceChange: (source: LandTypeSource) => void;
   onLandTypeRefresh: () => void;
   onLandTypeRefreshBbox: (bbox: [number, number, number, number]) => void;
+  showLandTypeControls?: boolean;
 }
 
 const stateColors: Record<ParcelState, string> = {
@@ -103,6 +104,7 @@ export function MapView({
   onLandTypeSourceChange,
   onLandTypeRefresh,
   onLandTypeRefreshBbox,
+  showLandTypeControls = true,
 }: MapViewProps) {
   const [layerVisibility, setLayerVisibility] = useState<Record<ParcelState, boolean>>({
     NSW: true,
@@ -137,8 +139,9 @@ export function MapView({
   );
 
   const hasParcelFeatures = filteredFeatures.length > 0;
+  const landTypeUiActive = showLandTypeControls && landTypeAvailable;
   const hasLandTypeFeatures =
-    landTypeEnabled && !!landTypeData && (landTypeData.features?.length ?? 0) > 0;
+    landTypeUiActive && landTypeEnabled && !!landTypeData && (landTypeData.features?.length ?? 0) > 0;
 
   const canUseLotPlans = landTypeLotPlans.length > 0;
   const usingLotPlans = landTypeSource === 'lotplans';
@@ -436,7 +439,7 @@ export function MapView({
           ))}
         </div>
 
-        {landTypeAvailable && (
+        {landTypeUiActive && (
           <div className="mt-5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-3">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -523,7 +526,7 @@ export function MapView({
       </CardHeader>
 
       <CardContent className="flex-1 p-0 relative min-h-[480px]">
-        {landTypeEnabled && landTypeIsLoading && (
+        {landTypeUiActive && landTypeEnabled && landTypeIsLoading && (
           <div className="absolute right-4 top-4 z-[750] flex items-center gap-2 rounded-full bg-background/85 px-3 py-1 text-xs shadow">
             <div className="h-3 w-3 animate-spin border-2 border-primary border-t-transparent rounded-full" />
             <span className="font-medium text-muted-foreground">Loading LandType…</span>
@@ -559,7 +562,7 @@ export function MapView({
               data={{ type: 'FeatureCollection', features: filteredFeatures } as any}
               onEachFeature={onEachFeature}
             />
-            {landTypeAvailable && (
+            {landTypeUiActive && (
               <LandTypeLayer enabled={landTypeEnabled} data={landTypeData} />
             )}
             <MapUpdater features={filteredFeatures} />
@@ -579,7 +582,7 @@ export function MapView({
           )}
         </div>
 
-        {landTypeAvailable && landTypeEnabled && landTypeLegend.length > 0 && (
+        {landTypeUiActive && landTypeEnabled && landTypeLegend.length > 0 && (
           <div className="border-t border-muted/40 bg-muted/10 px-4 py-3">
             <div className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
               LandType Legend
