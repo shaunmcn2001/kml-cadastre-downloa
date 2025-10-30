@@ -3,6 +3,7 @@ import hashlib
 from typing import Any, Optional, Tuple
 
 from ..property_config import BORE_STATUS_COLORS, WATER_LAYER_COLORS
+from .color_map import LANDTYPE_COLOR_MAP
 
 
 def _clean_text(value: Any) -> Optional[str]:
@@ -48,6 +49,9 @@ def color_for_landtype(props: dict) -> Optional[str]:
         code = name
     if not code:
         return None
+    mapped = LANDTYPE_COLOR_MAP.get(code)
+    if mapped:
+        return mapped
     return _rgb_to_hex(color_from_code(code))
 
 

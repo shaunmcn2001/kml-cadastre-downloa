@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
+from .landtype.color_map import LANDTYPE_COLOR_MAP
+
 
 @dataclass(frozen=True)
 class PropertyLayer:
@@ -110,7 +112,8 @@ PROPERTY_REPORT_LAYERS: List[PropertyLayer] = [
         name_field="lt_name_1",
         code_field="lt_code_1",
         color="#1d4ed8",
-        color_strategy="hash_code",
+        color_strategy="lookup",
+        color_map=LANDTYPE_COLOR_MAP,
         group="Land Types",
     ),
     PropertyLayer(
