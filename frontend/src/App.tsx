@@ -17,6 +17,7 @@ import type {
 import { PropertyReportsView } from './views/PropertyReportsView';
 import { SmartMapsView } from './views/SmartMapsView';
 import { ComingSoonView } from './views/ComingSoonView';
+import logoImage from './assets/logo.png';
 
 function App() {
   const [features, setFeatures] = useState<ParcelFeature[]>([]);
@@ -396,51 +397,48 @@ function App() {
           </button>
         </div>
       )}
-      <header className="border-b bg-card px-6 py-4">
-        <div className="flex flex-col gap-6">
-          <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="text-center sm:text-left">
-              <h1 className="text-2xl font-semibold tracking-tight text-foreground">Praedia</h1>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Cadastre & property analytics for Google Earth
-              </p>
-            </div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.35em] text-muted-foreground">
-              NSW • QLD • SA • VIC
-            </div>
+      <header className="border-b bg-card px-8 py-3 flex items-center justify-between">
+        {/* Left side: Logo */}
+        <div className="flex items-center gap-3">
+          <img src={logoImage} alt="Praedia" className="h-15 w-auto" />
+        </div>
+
+        {/* Center: Nav bar */}
+        <nav className="flex-1 flex justify-center">
+          <div className="inline-flex items-center rounded-full bg-muted/20 px-1 py-1 shadow-lg shadow-primary/20 backdrop-blur">
+            <span
+              ref={navIndicatorRef}
+              className="pointer-events-none absolute top-1 bottom-1 left-0 rounded-full bg-primary shadow transition-all duration-300 ease-out"
+              style={{ width: 0, transform: 'translateX(0px)' }}
+              aria-hidden="true"
+            />
+            {navItems.map(({ key, label }) => {
+              const active = activeView === key;
+              return (
+                <button
+                  key={key}
+                  ref={(el) => (navButtonRefs.current[key] = el)}
+                  type="button"
+                  onClick={() => setActiveView(key)}
+                  className={`relative z-10 rounded-full px-5 py-1.5 text-sm font-medium transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 ${
+                    active
+                      ? 'text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
-          <nav className="relative flex justify-center">
-            <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-8 sm:-translate-y-10">
-              <div className="relative inline-flex items-center rounded-full bg-muted/20 px-1 py-1 shadow-lg shadow-primary/20 backdrop-blur">
-                <span
-                  ref={navIndicatorRef}
-                  className="pointer-events-none absolute top-1 bottom-1 left-0 rounded-full bg-primary shadow transition-all duration-300 ease-out"
-                  style={{ width: 0, transform: 'translateX(0px)' }}
-                  aria-hidden="true"
-                />
-                {navItems.map(({ key, label }) => {
-                  const active = activeView === key;
-                  return (
-                    <button
-                      key={key}
-                      ref={(element) => {
-                        navButtonRefs.current[key] = element;
-                      }}
-                      type="button"
-                      onClick={() => setActiveView(key)}
-                      className={`relative z-10 rounded-full px-5 py-1.5 text-sm font-medium transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 ${active ? 'text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                      aria-pressed={active}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="h-8" aria-hidden="true" />
-          </nav>
+        </nav>
+
+        {/* Right side: State abbreviations */}
+        <div className="text-[11px] font-semibold uppercase tracking-[0.35em] text-muted-foreground">
+          NSW • QLD • SA • VIC
         </div>
       </header>
+
       {activeView === 'cadastre' && (
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1 p-4">
