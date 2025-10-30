@@ -48,6 +48,7 @@ function buildExportFeatures(report: PropertyReportResponse, visibleLayers: Reco
       const props = feature.properties || {};
       props.layer_label = layer.label;
       props.layer_id = layer.id;
+      props.layer_group = layer.group;
       addFeature({ ...feature, properties: props }, fallback, layer.color);
     });
   });

@@ -448,6 +448,8 @@ async def _fetch_layer_features(
         props.setdefault("layer_id", layer.id)
         props.setdefault("layer_label", layer.label)
         props.setdefault("geometry_type", layer.geometry_type)
+        if layer.group:
+            props.setdefault("layer_group", layer.group)
 
         if layer.name_field and props.get(layer.name_field):
             props.setdefault("name", props.get(layer.name_field))

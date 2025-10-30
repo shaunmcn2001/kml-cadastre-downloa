@@ -111,7 +111,7 @@ PROPERTY_REPORT_LAYERS: List[PropertyLayer] = [
         code_field="lt_code_1",
         color="#1d4ed8",
         color_strategy="hash_code",
-        group="Polygons",
+        group="Land Types",
     ),
     PropertyLayer(
         id="vegetation",
@@ -124,7 +124,7 @@ PROPERTY_REPORT_LAYERS: List[PropertyLayer] = [
         code_field="rvm_cat",
         color="#16a34a",
         color_strategy="hash_code",
-        group="Polygons",
+        group="Vegetation",
     ),
     PropertyLayer(
         id="bores",

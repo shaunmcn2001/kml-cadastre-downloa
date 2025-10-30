@@ -265,7 +265,7 @@ def export_kml(features: List[Feature], style_options: StyleOptions = None) -> s
                 style_options,
             )
 
-            _add_grouped_features(folder, state_features, style)
+            _add_grouped_features_nested(folder, state_features, style)
     elif style_options.folderName:
         # Single custom folder for all features, styled by state but in one folder
         folder = kml.newfolder(name=style_options.folderName.strip())
@@ -286,7 +286,7 @@ def export_kml(features: List[Feature], style_options: StyleOptions = None) -> s
                     style_options,
                 )
 
-                _add_grouped_features(folder, state_features, style)
+                _add_grouped_features_nested(folder, state_features, style)
         else:
             # Single style for all features in custom folder
             fill_override = None
@@ -303,7 +303,7 @@ def export_kml(features: List[Feature], style_options: StyleOptions = None) -> s
                 stroke_override=stroke_override,
             )
 
-            _add_grouped_features(folder, merged_features, style)
+            _add_grouped_features_nested(folder, merged_features, style)
     else:
         # Single style for all features
         fill_override = None
@@ -320,7 +320,7 @@ def export_kml(features: List[Feature], style_options: StyleOptions = None) -> s
             stroke_override=stroke_override,
         )
 
-        _add_grouped_features(kml, merged_features, style)
+        _add_grouped_features_nested(kml, merged_features, style)
 
     logger.info("KML export completed successfully")
     return kml.kml()
@@ -721,6 +721,42 @@ def _add_features_to_container(container, features: List[Feature], style):
         except Exception as e:
             logger.warning(f"Failed to add feature {getattr(feature.properties, 'id', 'unknown')} to KML: {e}")
             continue
+
+
+def _add_grouped_features_nested(container, features: List[Feature], style):
+    """
+    Build: Document -> layer_group -> layer_label -> placemarks.
+    Falls back to legacy behaviour when no group data exists.
+    """
+    tree: Dict[str, Dict[str, List[Feature]]] = defaultdict(lambda: defaultdict(list))
+    saw_group = False
+
+    for feature in features:
+        props = feature.properties
+        group = getattr(props, "layer_group", None)
+        label = getattr(props, "layer_label", None)
+        if group:
+            saw_group = True
+            tree[group][label or "Untitled"].append(feature)
+        else:
+            tree["_default"]["_default"].append(feature)
+
+    if not saw_group:
+        _add_grouped_features(container, features, style)
+        return
+
+    for group_name, buckets in tree.items():
+        if group_name == "_default":
+            _add_features_to_container(container, buckets["_default"], style)
+            continue
+
+        group_folder = container.newfolder(name=str(group_name))
+        for label, bucket in buckets.items():
+            if label == "_default":
+                _add_features_to_container(group_folder, bucket, style)
+            else:
+                sub_folder = group_folder.newfolder(name=str(label))
+                _add_features_to_container(sub_folder, bucket, style)
 
 
 def _add_grouped_features(container, features: List[Feature], style):
