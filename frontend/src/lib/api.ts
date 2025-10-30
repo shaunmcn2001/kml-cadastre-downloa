@@ -12,6 +12,7 @@ import type {
   PropertyLayerMeta,
   PropertyReportRequest,
   PropertyReportResponse,
+  PropertyReportExportRequest,
   LandTypeFeatureCollection,
   LandTypeExportRequest,
   LandTypeExportResponse
@@ -157,6 +158,10 @@ class ApiClient {
 
   async exportGeoTIFF(request: ExportRequest): Promise<Blob> {
     return this.makeRequest<Blob>('POST', '/api/geotiff', request, 'blob');
+  }
+
+  async exportPropertyReport(request: PropertyReportExportRequest): Promise<Blob> {
+    return this.makeRequest<Blob>('POST', '/api/property-report/export', request, 'blob');
   }
 
   async healthCheck(): Promise<{ status: string }> {

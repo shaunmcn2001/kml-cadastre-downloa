@@ -88,6 +88,18 @@ export interface PropertyReportResponse {
   layers: PropertyReportLayerResult[];
 }
 
+export interface PropertyReportExportOptions {
+  includeParcels?: boolean;
+  folderName?: string;
+}
+
+export interface PropertyReportExportRequest {
+  report: PropertyReportResponse;
+  format: 'kml' | 'kmz' | 'geojson';
+  visibleLayers?: Record<string, boolean>;
+  options?: PropertyReportExportOptions;
+}
+
 export interface ParcelSearchRequest {
   state: ParcelState;
   term: string;

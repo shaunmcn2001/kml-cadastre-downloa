@@ -1,5 +1,5 @@
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from enum import Enum
 
 class ParcelState(str, Enum):
@@ -70,6 +70,8 @@ class FeatureProperties(BaseModel):
     state: ParcelState
     name: str
     area_ha: Optional[float] = None
+
+    model_config = ConfigDict(extra="allow")
 
 class Feature(BaseModel):
     type: str = "Feature"

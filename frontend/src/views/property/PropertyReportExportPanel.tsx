@@ -5,101 +5,60 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api';
-import type { ParcelFeature, PropertyReportResponse } from '@/lib/types';
+import type { PropertyReportResponse } from '@/lib/types';
 
 interface PropertyReportExportPanelProps {
   report: PropertyReportResponse;
   visibleLayers: Record<string, boolean>;
 }
 
-function buildExportFeatures(report: PropertyReportResponse, visibleLayers: Record<string, boolean>): ParcelFeature[] {
-  const features: ParcelFeature[] = [];
-
-  const addFeature = (feature: any, fallbackName: string, layerColor?: string): void => {
-    if (!feature?.geometry) return;
-    const props = { ...(feature.properties || {}) };
-    if (layerColor && !props.layer_color) {
-      props.layer_color = layerColor;
-    }
-    const id = props.id || props.lotplan || props.code || fallbackName;
-    const name = props.name || props.code || fallbackName;
-    props.id = id;
-    props.name = name;
-    props.state = 'QLD';
-    props.layer = props.layer || fallbackName;
-
-    features.push({
-      type: 'Feature',
-      geometry: feature.geometry,
-      properties: props,
-    });
-  };
-
-  report.parcelFeatures.features.forEach((feature, index) => {
-    addFeature(feature, `Parcel ${index + 1}`);
-  });
-
-  report.layers.forEach(layer => {
-    if (visibleLayers[layer.id] === false) {
-      return;
-    }
-    layer.featureCollection.features.forEach((feature, index) => {
-      const fallback = `${layer.label} ${index + 1}`;
-      const props = feature.properties || {};
-      props.layer_label = layer.label;
-      props.layer_id = layer.id;
-      props.layer_group = layer.group;
-      addFeature({ ...feature, properties: props }, fallback, layer.color);
-    });
-  });
-
-  return features;
-}
-
 export function PropertyReportExportPanel({ report, visibleLayers }: PropertyReportExportPanelProps) {
   const [folderName, setFolderName] = useState('');
   const [isExporting, setIsExporting] = useState(false);
+  const exportableCount = useMemo(() => {
+    if (!report) return 0;
+    const parcelCount = report.parcelFeatures?.features?.length ?? 0;
+    const datasetCount = report.layers.reduce((sum, layer) => {
+      if (visibleLayers[layer.id] === false) {
+        return sum;
+      }
+      const featuresInLayer = layer.featureCollection?.features?.length ?? 0;
+      return sum + featuresInLayer;
+    }, 0);
+    return parcelCount + datasetCount;
+  }, [report, visibleLayers]);
 
-  const features = useMemo(() => buildExportFeatures(report, visibleLayers), [report, visibleLayers]);
+  const hasExportableData = exportableCount > 0;
 
-  const buildExportRequest = () => ({
-    features,
-    styleOptions: {
-      fillOpacity: 0.4,
-      strokeWidth: 2,
-      colorByState: false,
-      folderName: folderName.trim() || undefined,
-      mergeByName: false,
-      fillColor: '#2563eb',
-      strokeColor: '#1f2937',
-    }
-  });
-
-  const handleExport = async (format: 'kml' | 'kmz' | 'geotiff') => {
-    if (!features.length) {
+  const handleExport = async (format: 'kml' | 'kmz' | 'geojson') => {
+    if (!hasExportableData) {
       toast.error('No features available to export');
       return;
     }
 
     setIsExporting(true);
     try {
-      const request = buildExportRequest();
       const timestamp = new Date().toISOString().split('T')[0];
       const baseName = folderName.trim() || `property-report-${timestamp}`;
 
+      const payload = {
+        report,
+        format,
+        visibleLayers,
+        options: {
+          includeParcels: true,
+          folderName: folderName.trim() || undefined,
+        },
+      };
+
       let blob: Blob;
-      if (format === 'kml') {
-        blob = await apiClient.exportKML({ ...request, fileName: `${baseName}.kml` });
-      } else if (format === 'kmz') {
-        blob = await apiClient.exportKMZ({ ...request, fileName: `${baseName}.kmz` });
-      } else {
-        blob = await apiClient.exportGeoTIFF({ ...request, fileName: `${baseName}.tif` });
-      }
+      blob = await apiClient.exportPropertyReport(payload);
 
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = format === 'geotiff' ? `${baseName}.tif` : `${baseName}.${format}`;
+      const extension = format === 'geojson' ? 'geojson' : format;
+      link.download = `${baseName}.${extension}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -156,9 +115,9 @@ export function PropertyReportExportPanel({ report, visibleLayers }: PropertyRep
             variant="outline"
             className="justify-start"
             disabled={isExporting}
-            onClick={() => handleExport('geotiff')}
+            onClick={() => handleExport('geojson')}
           >
-            Download GeoTIFF
+            Download GeoJSON
           </Button>
         </div>
       </CardContent>

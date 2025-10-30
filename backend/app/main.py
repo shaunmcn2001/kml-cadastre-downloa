@@ -24,6 +24,7 @@ from .exports.kmz import export_kmz
 from .exports.tiff import export_geotiff
 from .utils.logging import setup_logging, get_logger
 from .property_report import generate_property_report, list_property_layers
+from .property_report_export import export_property_report
 from .smartmaps import generate_smartmap_zip, SmartMapDownloadError
 from .landtype import router as landtype_router
 from .settings import (
@@ -65,6 +66,18 @@ app.add_middleware(
 
 class SmartMapRequest(BaseModel):
     lotPlans: List[str]
+
+
+class PropertyReportExportOptions(BaseModel):
+    includeParcels: bool = True
+    folderName: Optional[str] = None
+
+
+class PropertyReportExportRequest(BaseModel):
+    report: PropertyReportResponse
+    visibleLayers: Optional[Dict[str, bool]] = None
+    format: str = "kml"
+    options: Optional[PropertyReportExportOptions] = None
 
 @app.middleware("http")
 async def request_logging_middleware(request: Request, call_next):
@@ -190,6 +203,56 @@ async def property_report_query(request: PropertyReportRequest, req: Request):
     except Exception as exc:
         logger.error("Property report generation failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to generate property report")
+
+
+@app.post("/api/property-report/export")
+async def property_report_export_endpoint(request: PropertyReportExportRequest, req: Request):
+    client_ip = req.client.host if req.client else "unknown"
+    if not rate_limiter.is_allowed(client_ip):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+
+    if request.report is None:
+        raise HTTPException(status_code=400, detail="Property report payload is required")
+
+    options = request.options or PropertyReportExportOptions()
+    visible_layers = request.visibleLayers or {}
+    include_parcels = options.includeParcels
+
+    default_label = ", ".join(request.report.lotPlans or []) or "Property Report"
+    folder_label = options.folderName.strip() if options.folderName else f"Property Report – {default_label}"
+
+    try:
+        export_data = export_property_report(
+            request.report,
+            visible_layers=visible_layers,
+            include_parcels=include_parcels,
+            folder_name=folder_label,
+            format=request.format,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Property report export failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to export property report")
+
+    normalized_format = (request.format or "kml").strip().lower()
+    extension_map = {"kml": ".kml", "kmz": ".kmz", "geojson": ".geojson"}
+    extension = extension_map.get(normalized_format, ".kml")
+
+    sanitized_base = sanitize_export_filename(folder_label, "") or "property-report"
+    filename = sanitize_export_filename(sanitized_base, extension) or f"property-report{extension}"
+
+    content = export_data["content"]
+    media_type = export_data["media_type"]
+
+    headers = {"Content-Disposition": build_content_disposition(filename)}
+
+    if normalized_format == "geojson":
+        body = json.dumps(content)
+    else:
+        body = content
+
+    return Response(content=body, media_type=media_type, headers=headers)
 
 
 @app.post("/api/smartmaps/download")
