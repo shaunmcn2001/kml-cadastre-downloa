@@ -26,7 +26,7 @@ from .utils.logging import setup_logging, get_logger
 from .property_report import generate_property_report, list_property_layers
 from .property_report_export import export_property_report
 from .smartmaps import generate_smartmap_zip, SmartMapDownloadError
-from .landtype import router as landtype_router
+from .landtype.router import router as landtype_router
 from .settings import (
     LOG_LEVEL,
     FRONTEND_ORIGIN,

@@ -1,3 +1,3 @@
-from .router import router
+"""Landtype package."""
 
-__all__ = ["router"]
+__all__ = []
