@@ -76,12 +76,57 @@ def _ensure_layer_metadata(props: Dict[str, Any], layer: PropertyReportLayer) ->
         props["layer_color"] = color_value
 
 
+def _compose_sidebar_name(
+    layer_id: Optional[str],
+    display_name: Optional[str],
+    code_value: Optional[str],
+    props: Dict[str, Any],
+    fallback: str,
+) -> Optional[str]:
+    layer_norm = (layer_id or "").strip().lower()
+    code_clean = _clean_text(code_value)
+    title = _clean_text(display_name) or _clean_text(props.get("name")) or fallback
+
+    if layer_norm in {"vegetation", "regulated_vegetation", "veg"}:
+        category = title or code_clean or fallback
+        if category:
+            if not category.lower().startswith("category"):
+                category = f"Category {category}"
+        if code_clean and code_clean.upper() not in (category or "").upper():
+            category = f"{category} ({code_clean})" if category else code_clean
+        return category
+
+    if layer_norm in {"landtypes", "land_types"}:
+        name_value = title or code_clean or fallback
+        if code_clean and code_clean.upper() not in (name_value or "").upper():
+            name_value = f"{name_value} ({code_clean})" if name_value else code_clean
+        return name_value
+
+    if layer_norm == "easements":
+        alias = _clean_text(props.get("alias"))
+        parcel_type = _clean_text(props.get("parcel_type"))
+        tenure = _clean_text(props.get("tenure"))
+        lotplan = _clean_text(props.get("lotplan"))
+        parts = [part for part in (alias, parcel_type, tenure, lotplan) if part]
+        if parts:
+            return " – ".join(parts)
+
+    if code_clean:
+        label = title or fallback or code_clean
+        if code_clean.upper() not in (label or "").upper():
+            label = f"{label} ({code_clean})" if label else code_clean
+        return label
+
+    return title or fallback
+
+
 def _feature_from_geojson(
     feature: Dict[str, Any],
     *,
     fallback_id: str,
     fallback_name: str,
     default_state: ParcelState,
+    layer_id: Optional[str] = None,
 ) -> Optional[Feature]:
     geometry = _serialise_geometry(feature)
     if not geometry:
@@ -92,6 +137,8 @@ def _feature_from_geojson(
 
     state_value = props_raw.get("state")
     state = _normalise_state(state_value) if state_value else default_state
+
+    code_value = _clean_text(props_raw.get("code"))
 
     identifier = _clean_text(
         props_raw.get("id")
@@ -118,6 +165,13 @@ def _feature_from_geojson(
     area_float = _safe_float(props_payload.get("area_ha"))
     if area_float is not None:
         props_payload["area_ha"] = area_float
+
+    if display_name:
+        props_payload.setdefault("display_name", display_name)
+
+    sidebar_label = _compose_sidebar_name(layer_id, display_name, code_value, props_payload, fallback_name)
+    if sidebar_label:
+        props_payload["sidebar_name"] = sidebar_label
 
     try:
         properties = FeatureProperties.model_validate(props_payload)
@@ -148,6 +202,7 @@ def _collect_layer_features(
             fallback_id=f"{layer.id}-{index}",
             fallback_name=f"{layer.label} {index}",
             default_state=default_state,
+            layer_id=layer.id,
         )
         if feature:
             features.append(feature)
@@ -171,6 +226,7 @@ def build_property_report_features(
                 fallback_id=f"parcel-{index}",
                 fallback_name=raw.get("properties", {}).get("lotplan", f"Parcel {index}") or f"Parcel {index}",
                 default_state=default_state,
+                layer_id="parcel",
             )
             if feature:
                 features.append(feature)

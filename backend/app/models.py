@@ -144,6 +144,11 @@ class PropertyReportLayer(BaseModel):
     featureCount: int
     color: Optional[str] = None
     featureCollection: Dict[str, Any]
+    colorStrategy: Optional[str] = None
+    colorMap: Optional[Dict[str, str]] = None
+    group: Optional[str] = None
+
+    model_config = ConfigDict(extra="allow")
 
 class PropertyReportRequest(BaseModel):
     lotPlans: List[str]

@@ -608,11 +608,17 @@ def _add_features_to_container(container, features: List[Feature], style):
             geometry = feature.geometry
 
             # --- force sidebar name to lotplan (fallback to id) and remove snippet ---
-            desired_name = None
-            for key in ("lotplan", "lot_plan", "lot_plan_id"):
-                if hasattr(props, key) and getattr(props, key):
-                    desired_name = str(getattr(props, key))
-                    break
+            desired_name = getattr(props, "sidebar_name", None)
+            if not desired_name:
+                for key in ("display_name", "name"):
+                    if hasattr(props, key) and getattr(props, key):
+                        desired_name = str(getattr(props, key))
+                        break
+            if not desired_name:
+                for key in ("lotplan", "lot_plan", "lot_plan_id"):
+                    if hasattr(props, key) and getattr(props, key):
+                        desired_name = str(getattr(props, key))
+                        break
             if not desired_name:
                 desired_name = str(getattr(props, "id", "Parcel"))
 

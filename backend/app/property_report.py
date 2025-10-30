@@ -470,6 +470,25 @@ async def _fetch_layer_features(
                 seen_bore_numbers.add(bore_id_str)
         elif layer.id == "easements":
             props.update(_normalise_easement_properties(props, primary_lotplan))
+        elif layer.id in {"vegetation", "regulated_vegetation", "veg"}:
+            category_value = _clean_text(
+                props.get(layer.name_field or "name")
+                or props.get("name")
+                or props.get("display_name")
+                or props.get("code")
+            )
+            code_value = _clean_text(
+                props.get(layer.code_field or "code")
+                or props.get("code")
+            )
+            if category_value:
+                label = category_value
+                if not label.lower().startswith("category"):
+                    label = f"Category {label}"
+                props["name"] = label
+                props["display_name"] = label
+            if code_value:
+                props["code"] = code_value
         elif layer.group == "Water" or layer.id.startswith("water-"):
             props.update(_normalise_water_properties(props, layer, lotplan_label))
             if not props.get("code"):
