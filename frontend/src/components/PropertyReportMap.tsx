@@ -28,6 +28,97 @@ type BaseLayerKey = keyof typeof basemapConfig;
 
 const fallbackPalette = ['#2563eb', '#22c55e', '#f97316', '#a855f7', '#ec4899', '#0ea5e9', '#facc15'];
 
+type LegendFeatureEntry = {
+  id: string;
+  label: string;
+  color: string;
+  areaText?: string;
+};
+
+type LegendGroupEntry = {
+  layerId: string;
+  layerLabel: string;
+  geometryType: string;
+  active: boolean;
+  features: LegendFeatureEntry[];
+};
+
+const cleanText = (value: unknown): string | undefined => {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value.toString();
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : undefined;
+  }
+  const text = String(value).trim();
+  return text.length ? text : undefined;
+};
+
+const parseNumeric = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const cleaned = value.replace(/,/g, '').trim();
+    if (!cleaned) return undefined;
+    const parsed = Number.parseFloat(cleaned);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+};
+
+const buildAreaText = (properties: Record<string, any> | undefined): string | undefined => {
+  if (!properties) return undefined;
+  const areaHa = parseNumeric(properties.area_ha ?? properties.areaHa);
+  if (areaHa !== undefined && areaHa > 0) {
+    const decimals = areaHa >= 100 ? 0 : areaHa >= 10 ? 1 : 2;
+    return `${areaHa.toFixed(decimals)} ha`;
+  }
+  const areaM2 = parseNumeric(properties.area_m2 ?? properties.areaM2);
+  if (areaM2 !== undefined && areaM2 > 0) {
+    const hectares = areaM2 / 10000;
+    const decimals = hectares >= 100 ? 0 : hectares >= 10 ? 1 : 2;
+    return `${hectares.toFixed(decimals)} ha`;
+  }
+  return undefined;
+};
+
+const buildFeatureLabel = (properties: Record<string, any> | undefined, fallback: string): string => {
+  const props = properties ?? {};
+  const nameCandidates = [
+    cleanText(props.display_name),
+    cleanText(props.name),
+    cleanText(props.layer_title),
+    cleanText(props.alias),
+    cleanText(props.title),
+    cleanText(props.description),
+  ];
+  let label = nameCandidates.find(Boolean) ?? fallback;
+
+  const codeCandidates = [
+    cleanText(props.code),
+    cleanText(props.lt_code),
+    cleanText(props.lt_code_1),
+    cleanText(props.rvm_cat),
+    cleanText(props.category),
+    cleanText(props.status),
+    cleanText(props.parcel_type),
+  ];
+  const code = codeCandidates.find(Boolean);
+  if (code) {
+    const lowerLabel = label.toLowerCase();
+    if (!lowerLabel.includes(code.toLowerCase())) {
+      label = `${label} (${code})`;
+    }
+  }
+
+  return label;
+};
+
 interface PropertyReportMapProps {
   parcels?: ParcelFeature[];
   layers: PropertyReportLayerResult[];
@@ -194,24 +285,55 @@ export function PropertyReportMap({
     onToggleLayer(layerId);
   };
 
-  const legendEntries = useMemo(
-    () =>
-      layers.map((layer, index) => {
+  const legendGroups = useMemo<LegendGroupEntry[]>(() => {
+    return layers
+      .map((layer, index) => {
         const fallbackColor = layer.color || fallbackPalette[index % fallbackPalette.length];
+        const datasetColor = resolveDatasetColor(layer.id, fallbackColor);
+        const active = layerVisibility[layer.id] !== false;
+
+        const features: LegendFeatureEntry[] = (layer.featureCollection?.features ?? []).map((feature: any, featureIndex: number) => {
+          const properties: Record<string, any> = feature?.properties ?? {};
+          const color = pickFeatureColor(feature, datasetColor);
+          const fallback = `${layer.label} ${featureIndex + 1}`;
+          const label = buildFeatureLabel(properties, fallback);
+          const areaText = buildAreaText(properties);
+          const id =
+            cleanText(properties.id) ||
+            cleanText(properties.code) ||
+            cleanText(properties.lotplan) ||
+            `${layer.id}-${featureIndex}`;
+
+          return {
+            id,
+            label,
+            color,
+            areaText,
+          };
+        });
+
+        if (!features.length) {
+          return null;
+        }
+
+        const uniqueFeatures = features.filter((feature, index, array) =>
+          array.findIndex(candidate => candidate.id === feature.id) === index
+        );
+
         return {
-          id: layer.id,
-          label: layer.label,
-          color: resolveDatasetColor(layer.id, fallbackColor),
-          featureCount: layer.featureCount,
-          active: layerVisibility[layer.id] !== false,
+          layerId: layer.id,
+          layerLabel: layer.label,
+          geometryType: layer.geometryType,
+          active,
+          features: uniqueFeatures,
         };
-      }),
-    [layers, layerVisibility, datasetColors]
-  );
+      })
+      .filter((entry): entry is LegendGroupEntry => Boolean(entry));
+  }, [layers, layerVisibility, datasetColors]);
 
   const totalLegendFeatures = useMemo(
-    () => legendEntries.reduce((sum, entry) => sum + entry.featureCount, 0),
-    [legendEntries]
+    () => legendGroups.reduce((sum, group) => sum + group.features.length, 0),
+    [legendGroups]
   );
 
   const handleSearch = async (event: React.FormEvent) => {
@@ -447,37 +569,52 @@ export function PropertyReportMap({
           )}
         </div>
 
-        {legendEntries.length > 0 && (
+        {legendGroups.length > 0 && (
           <div className="border-t bg-muted/10 px-4 py-3">
             <div className="flex items-center justify-between">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Layer Summary</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Feature Summary</p>
               <span className="text-[11px] text-muted-foreground">{totalLegendFeatures} features</span>
             </div>
-            <ul className="mt-2 grid gap-2 text-xs sm:grid-cols-2" role="list">
-              {legendEntries.map(entry => (
-                <li key={entry.id} className="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-background/80 px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="inline-flex h-3.5 w-3.5 rounded-full border border-border/40"
-                      style={{
-                        backgroundColor: entry.color,
-                        opacity: entry.active ? 0.9 : 0.2,
-                      }}
-                      aria-hidden="true"
-                    />
-                    <div className="flex flex-col leading-tight">
-                      <span className={`font-medium ${entry.active ? 'text-foreground' : 'text-muted-foreground/80'}`}>
-                        {entry.label}
+            <div className="mt-3 space-y-3">
+              {legendGroups.map(group => (
+                <div key={group.layerId} className="rounded-lg border border-border/60 bg-background/85 shadow-sm">
+                  <div className="flex items-center justify-between gap-3 border-b border-border/50 px-3 py-2">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold text-foreground">{group.layerLabel}</span>
+                      <span className="text-[10px] text-muted-foreground/70">
+                        {group.geometryType}
+                        {group.active ? '' : ' · Hidden'}
                       </span>
-                      <span className="text-[10px] text-muted-foreground/70">{entry.active ? 'Visible' : 'Hidden'}</span>
                     </div>
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                      {group.features.length}
+                    </Badge>
                   </div>
-                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0" aria-label={`${entry.featureCount} features`}>
-                    {entry.featureCount}
-                  </Badge>
-                </li>
+                  <ul className="divide-y divide-border/40 text-xs" role="list">
+                    {group.features.map(feature => (
+                      <li key={feature.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="inline-flex h-3 w-3 flex-shrink-0 rounded border border-border/50"
+                            style={{
+                              backgroundColor: feature.color,
+                              opacity: group.active ? 0.9 : 0.2,
+                            }}
+                            aria-hidden="true"
+                          />
+                          <span className={`font-medium ${group.active ? 'text-foreground' : 'text-muted-foreground/70'}`}>
+                            {feature.label}
+                          </span>
+                        </div>
+                        {feature.areaText && (
+                          <span className="text-[10px] text-muted-foreground/60">{feature.areaText}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
         )}
       </CardContent>
