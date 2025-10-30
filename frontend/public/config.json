@@ -2,5 +2,49 @@
   "BACKEND_URL": "https://kml-cadastre-downloa.onrender.com",
   "features": {
     "landtypeEnabled": true
-  }
+  },
+  "datasets": [
+    {
+      "id": "landtypes",
+      "label": "Land Types",
+      "geometry": "polygon",
+      "color": "#6B8E23"
+    },
+    {
+      "id": "vegetation",
+      "label": "Regulated Vegetation",
+      "geometry": "polygon",
+      "color": "#2BB673"
+    },
+    {
+      "id": "bores",
+      "label": "Registered Water Bores",
+      "geometry": "point",
+      "color": "#E3B57C"
+    },
+    {
+      "id": "easements",
+      "label": "Easements",
+      "geometry": "polygon",
+      "color": "#B9A2FF"
+    },
+    {
+      "id": "farm_dams",
+      "label": "Farm Dams",
+      "geometry": "point",
+      "color": "#8FD3FF"
+    },
+    {
+      "id": "watercourses",
+      "label": "Watercourses",
+      "geometry": "polyline",
+      "color": "#2AA1FF"
+    },
+    {
+      "id": "water_bores",
+      "label": "Water Bores",
+      "geometry": "point",
+      "color": "#E3B57C"
+    }
+  ]
 }

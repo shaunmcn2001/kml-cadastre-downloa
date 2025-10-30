@@ -13,6 +13,7 @@ from .models import ParcelState
 from .parsers.qld import parse_qld
 from .property_config import PROPERTY_LAYER_MAP, PROPERTY_REPORT_LAYERS, PropertyLayer
 from .landtype.colors import color_from_code
+from .style.colors import resolve_layer_color
 from .utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -480,9 +481,12 @@ async def _fetch_layer_features(
             if display_name:
                 props.setdefault("display_name", _clean_text(display_name))
 
-        color_value = _apply_layer_color(layer, props)
-        if color_value:
-            props["layer_color"] = color_value
+        if not props.get("layer_color"):
+            color_value = resolve_layer_color(layer.id, props)
+            if not color_value:
+                color_value = _apply_layer_color(layer, props)
+            if color_value:
+                props["layer_color"] = color_value
 
         clipped["properties"] = props
         features_out.append(clipped)

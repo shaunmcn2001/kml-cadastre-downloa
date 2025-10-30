@@ -32,6 +32,7 @@ interface PropertyReportMapProps {
   parcels?: ParcelFeature[];
   layers: PropertyReportLayerResult[];
   layerVisibility: Record<string, boolean>;
+  datasetColors?: Record<string, string>;
   onToggleLayer: (id: string) => void;
 }
 
@@ -62,7 +63,13 @@ function useGeoJsonLayer(map: L.Map | null, data: any, options: L.GeoJSONOptions
   return layerRef;
 }
 
-export function PropertyReportMap({ parcels, layers, layerVisibility, onToggleLayer }: PropertyReportMapProps) {
+export function PropertyReportMap({
+  parcels,
+  layers,
+  layerVisibility,
+  datasetColors = {},
+  onToggleLayer,
+}: PropertyReportMapProps) {
   const [baseLayer, setBaseLayer] = useState<BaseLayerKey>('streets');
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -90,6 +97,28 @@ export function PropertyReportMap({ parcels, layers, layerVisibility, onToggleLa
     }
   );
 
+  const resolveDatasetColor = (layerId: string, fallback: string) =>
+    datasetColors[layerId] || fallback;
+
+  const pickFeatureColor = (feature: any, datasetColor: string) => {
+    const fromFeature = feature?.properties?.layer_color;
+    if (typeof fromFeature === 'string' && fromFeature.trim()) {
+      return fromFeature;
+    }
+    return datasetColor;
+  };
+
+  const styleForFeature = (feature: any, datasetColor: string, geometryType: string) => {
+    const color = pickFeatureColor(feature, datasetColor);
+    return {
+      color,
+      fillColor: color,
+      weight: geometryType === 'polyline' ? 2 : 1.25,
+      fillOpacity: geometryType === 'polygon' ? 0.3 : 0,
+      opacity: 0.95,
+    };
+  };
+
   const datasetLayersRef = useRef<Record<string, L.GeoJSON>>({});
 
   useEffect(() => {
@@ -102,18 +131,11 @@ export function PropertyReportMap({ parcels, layers, layerVisibility, onToggleLa
 
     layers.forEach((layer, index) => {
       const fallbackColor = layer.color || fallbackPalette[index % fallbackPalette.length];
+      const datasetColor = resolveDatasetColor(layer.id, fallbackColor);
       const geojsonLayer = L.geoJSON(layer.featureCollection as any, {
-        style: (feature: any) => {
-          const featureColor = feature?.properties?.layer_color || fallbackColor;
-          return {
-            color: featureColor,
-            fillColor: featureColor,
-            weight: layer.geometryType === 'polyline' ? 2 : 1.25,
-            fillOpacity: layer.geometryType === 'polygon' ? 0.25 : 0,
-          };
-        },
+        style: (feature: any) => styleForFeature(feature, datasetColor, layer.geometryType),
         pointToLayer: (feature, latlng) => {
-          const featureColor = (feature?.properties as any)?.layer_color || fallbackColor;
+          const featureColor = pickFeatureColor(feature, datasetColor);
           return L.circleMarker(latlng, {
             radius: 5,
             fillColor: featureColor,
@@ -151,7 +173,7 @@ export function PropertyReportMap({ parcels, layers, layerVisibility, onToggleLa
       Object.values(datasetLayersRef.current).forEach(layer => layer.remove());
       datasetLayersRef.current = {};
     };
-  }, [layers, parcelCollection, layerVisibility, mapInstance]);
+  }, [layers, parcelCollection, layerVisibility, mapInstance, datasetColors]);
 
   useEffect(() => {
     const map = mapInstance;
@@ -174,14 +196,17 @@ export function PropertyReportMap({ parcels, layers, layerVisibility, onToggleLa
 
   const legendEntries = useMemo(
     () =>
-      layers.map((layer, index) => ({
-        id: layer.id,
-        label: layer.label,
-        color: layer.color || fallbackPalette[index % fallbackPalette.length],
-        featureCount: layer.featureCount,
-        active: layerVisibility[layer.id] !== false,
-      })),
-    [layers, layerVisibility]
+      layers.map((layer, index) => {
+        const fallbackColor = layer.color || fallbackPalette[index % fallbackPalette.length];
+        return {
+          id: layer.id,
+          label: layer.label,
+          color: resolveDatasetColor(layer.id, fallbackColor),
+          featureCount: layer.featureCount,
+          active: layerVisibility[layer.id] !== false,
+        };
+      }),
+    [layers, layerVisibility, datasetColors]
   );
 
   const totalLegendFeatures = useMemo(
@@ -237,14 +262,17 @@ export function PropertyReportMap({ parcels, layers, layerVisibility, onToggleLa
 
   const badgeEntries = useMemo(
     () =>
-      layers.map((layer, index) => ({
-        id: layer.id,
-        label: layer.label,
-        geometryType: layer.geometryType,
-        color: layer.color || fallbackPalette[index % fallbackPalette.length],
-        active: layerVisibility[layer.id] !== false,
-      })),
-    [layers, layerVisibility]
+      layers.map((layer, index) => {
+        const fallbackColor = layer.color || fallbackPalette[index % fallbackPalette.length];
+        return {
+          id: layer.id,
+          label: layer.label,
+          geometryType: layer.geometryType,
+          color: resolveDatasetColor(layer.id, fallbackColor),
+          active: layerVisibility[layer.id] !== false,
+        };
+      }),
+    [layers, layerVisibility, datasetColors]
   );
 
   return (
@@ -309,7 +337,10 @@ export function PropertyReportMap({ parcels, layers, layerVisibility, onToggleLa
 
         <div className="flex flex-col gap-2 mt-4">
           {layers.map((layer, index) => {
-            const color = layer.color || fallbackPalette[index % fallbackPalette.length];
+            const color = resolveDatasetColor(
+              layer.id,
+              layer.color || fallbackPalette[index % fallbackPalette.length]
+            );
             const active = layerVisibility[layer.id] !== false;
             return (
               <button

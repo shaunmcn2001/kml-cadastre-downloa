@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { PropertyReportMap } from '@/components/PropertyReportMap';
 import { apiClient } from '@/lib/api';
+import { loadConfig } from '@/lib/config';
 import { parseQLD } from '@/lib/parsers';
 import type {
   ParcelFeature,
@@ -27,6 +28,7 @@ const fallbackColors = ['#2563eb', '#22c55e', '#f97316', '#a855f7', '#ec4899', '
 
 export function PropertyReportsView() {
   const [datasets, setDatasets] = useState<PropertyLayerMeta[]>([]);
+  const [configDatasetColors, setConfigDatasetColors] = useState<Record<string, string>>({});
   const [selectedDatasetIds, setSelectedDatasetIds] = useState<string[]>([]);
   const [lotPlanInput, setLotPlanInput] = useState('');
   const [parsedState, setParsedState] = useState<ParsedLotPlanState>(initialParsedState);
@@ -46,6 +48,25 @@ export function PropertyReportsView() {
       }
     };
     fetchLayers();
+  }, []);
+
+  useEffect(() => {
+    const loadDefaults = async () => {
+      try {
+        const config = await loadConfig();
+        const map: Record<string, string> = {};
+        (config.datasets ?? []).forEach((entry) => {
+          if (entry?.id && entry.color) {
+            map[entry.id] = entry.color;
+          }
+        });
+        setConfigDatasetColors(map);
+      } catch (error) {
+        console.error('Failed to load dataset color defaults', error);
+        setConfigDatasetColors({});
+      }
+    };
+    loadDefaults();
   }, []);
 
   useEffect(() => {
@@ -118,6 +139,20 @@ export function PropertyReportsView() {
 
   const layerResults: PropertyReportLayerResult[] = report?.layers ?? [];
 
+  const datasetColors = useMemo(() => {
+    if (!datasets.length && !Object.keys(configDatasetColors).length) {
+      return {};
+    }
+    const colors: Record<string, string> = {};
+    datasets.forEach((dataset, index) => {
+      const paletteFallback = fallbackColors[index % fallbackColors.length];
+      const configuredColor = configDatasetColors[dataset.id];
+      const finalColor = dataset.color || configuredColor || paletteFallback;
+      colors[dataset.id] = finalColor;
+    });
+    return colors;
+  }, [datasets, configDatasetColors]);
+
   const handleLayerVisibilityToggle = (layerId: string) => {
     setLayerVisibility(prev => ({
       ...prev,
@@ -151,6 +186,7 @@ export function PropertyReportsView() {
           parcels={parcelFeatures}
           layers={layerResults}
           layerVisibility={layerVisibility}
+          datasetColors={datasetColors}
           onToggleLayer={handleLayerVisibilityToggle}
         />
       </div>
@@ -219,7 +255,7 @@ export function PropertyReportsView() {
                       <div className="space-y-3">
                         {items.map((dataset, index) => {
                           const selected = selectAll || selectedDatasetIds.includes(dataset.id);
-                          const color = dataset.color || fallbackColors[(groupIndex + index) % fallbackColors.length];
+                          const color = datasetColors[dataset.id] || fallbackColors[(groupIndex + index) % fallbackColors.length];
                           return (
                             <button
                               key={dataset.id}
