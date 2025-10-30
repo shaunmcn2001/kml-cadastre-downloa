@@ -68,8 +68,12 @@ def _serialise_geometry(feature: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 def _ensure_layer_metadata(props: Dict[str, Any], layer: PropertyReportLayer) -> None:
     props.setdefault("layer_id", layer.id)
     props.setdefault("layer_label", layer.label)
-    if layer.group:
-        props.setdefault("layer_group", layer.group)
+    group_value = getattr(layer, "group", None)
+    if group_value:
+        props.setdefault("layer_group", group_value)
+    color_value = getattr(layer, "color", None)
+    if color_value and not props.get("layer_color"):
+        props["layer_color"] = color_value
 
 
 def _feature_from_geojson(
