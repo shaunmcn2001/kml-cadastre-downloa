@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from .landtype.color_map import LANDTYPE_COLOR_MAP
+from .style.veg_color_map import VEGETATION_COLOR_MAP
 
 
 @dataclass(frozen=True)
@@ -126,7 +127,8 @@ PROPERTY_REPORT_LAYERS: List[PropertyLayer] = [
         name_field="rvm_cat",
         code_field="rvm_cat",
         color="#16a34a",
-        color_strategy="hash_code",
+        color_strategy="lookup",
+        color_map=VEGETATION_COLOR_MAP,
         group="Vegetation",
     ),
     PropertyLayer(

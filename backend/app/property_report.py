@@ -501,9 +501,9 @@ async def _fetch_layer_features(
                 props.setdefault("display_name", _clean_text(display_name))
 
         if not props.get("layer_color"):
-            color_value = resolve_layer_color(layer.id, props)
+            color_value = _apply_layer_color(layer, props)
             if not color_value:
-                color_value = _apply_layer_color(layer, props)
+                color_value = resolve_layer_color(layer.id, props)
             if color_value:
                 props["layer_color"] = color_value
 

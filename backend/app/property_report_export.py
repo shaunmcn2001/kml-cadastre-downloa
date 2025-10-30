@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional
 
+from pyproj import Geod
+from shapely.geometry import mapping, shape
+from shapely.ops import unary_union
+
 from .exports.kml import export_kml
 from .exports.kmz import export_kmz
 from .models import (
@@ -15,6 +19,8 @@ from .models import (
 from .utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+_GEOD = Geod(ellps="WGS84")
 
 
 def _clean_text(value: Any) -> Optional[str]:
@@ -118,6 +124,101 @@ def _compose_sidebar_name(
         return label
 
     return title or fallback
+
+
+def _calculate_area_hectares(geom) -> Optional[float]:
+    if geom is None or getattr(geom, "is_empty", True):
+        return None
+    try:
+        area, _ = _GEOD.geometry_area_perimeter(geom)
+    except Exception:
+        return None
+    if not area:
+        return 0.0
+    return abs(area) / 10000.0
+
+
+def _ensure_polygon_area(feature: Feature) -> Feature:
+    geometry = feature.geometry or {}
+    geom_type = geometry.get("type")
+    if geom_type not in ("Polygon", "MultiPolygon"):
+        return feature
+    try:
+        shp_geom = shape(geometry)
+    except Exception:
+        return feature
+    area_ha = _calculate_area_hectares(shp_geom)
+    if area_ha is None:
+        return feature
+    props = feature.properties.model_dump()
+    props["area_ha"] = area_ha
+    props["area_m2"] = area_ha * 10000.0
+    new_props = FeatureProperties.model_validate(props)
+    return Feature(geometry=geometry, properties=new_props)
+
+
+def _merge_polygon_features(features: List[Feature]) -> List[Feature]:
+    grouped: Dict[tuple, List[Feature]] = {}
+    non_polygons: List[Feature] = []
+
+    for feature in features:
+        geometry = feature.geometry or {}
+        geom_type = geometry.get("type")
+        if geom_type not in ("Polygon", "MultiPolygon"):
+            non_polygons.append(feature)
+            continue
+
+        props = feature.properties
+        layer_id = getattr(props, "layer_id", None)
+        sidebar = (
+            getattr(props, "sidebar_name", None)
+            or getattr(props, "display_name", None)
+            or getattr(props, "name", None)
+        )
+        code = getattr(props, "code", None)
+        key = (layer_id, sidebar or code or getattr(props, "name", None), code)
+        grouped.setdefault(key, []).append(feature)
+
+    merged: List[Feature] = []
+    for group_features in grouped.values():
+        shapely_geoms = []
+        for feat in group_features:
+            try:
+                shapely_geoms.append(shape(feat.geometry))
+            except Exception:
+                shapely_geoms = []
+                break
+        if not shapely_geoms:
+            for feat in group_features:
+                merged.append(_ensure_polygon_area(feat))
+            continue
+
+        try:
+            union_geom = unary_union(shapely_geoms)
+        except Exception:
+            for feat in group_features:
+                merged.append(_ensure_polygon_area(feat))
+            continue
+
+        if union_geom.is_empty:
+            continue
+        if union_geom.geom_type == "GeometryCollection":
+            polys = [g for g in getattr(union_geom, "geoms", []) if g.geom_type in ("Polygon", "MultiPolygon")]
+            if not polys:
+                continue
+            union_geom = unary_union(polys)
+
+        area_ha = _calculate_area_hectares(union_geom)
+        props_dict = group_features[0].properties.model_dump()
+        if area_ha is not None:
+            props_dict["area_ha"] = area_ha
+            props_dict["area_m2"] = area_ha * 10000.0
+
+        new_props = FeatureProperties.model_validate(props_dict)
+        merged.append(Feature(geometry=mapping(union_geom), properties=new_props))
+
+    merged.extend(non_polygons)
+    return merged
 
 
 def _feature_from_geojson(
@@ -247,28 +348,29 @@ def build_property_report_features(
 
 def build_property_report_geojson(
     report: PropertyReportResponse,
-    *,
-    visible_layers: Optional[Dict[str, bool]] = None,
-    include_parcels: bool = True,
+    features: List[Feature],
 ) -> Dict[str, Any]:
-    visible_layers = visible_layers or {}
+    converted: List[Dict[str, Any]] = []
+    exported_layers: set[str] = set()
 
-    features: List[Dict[str, Any]] = []
-    if include_parcels:
-        features.extend(report.parcelFeatures.get("features", []))
-
-    for layer in report.layers:
-        if visible_layers.get(layer.id) is False:
-            continue
-        features.extend(layer.featureCollection.get("features", []))
+    for feature in features:
+        props = feature.properties.model_dump()
+        layer_id = props.get("layer_id")
+        if layer_id and layer_id != "parcel":
+            exported_layers.add(str(layer_id))
+        converted.append({
+            "type": "Feature",
+            "geometry": feature.geometry,
+            "properties": props,
+        })
 
     return {
         "type": "FeatureCollection",
-        "features": features,
+        "features": converted,
         "properties": {
             "lotPlans": report.lotPlans,
             "layerCount": len(report.layers),
-            "exportedLayers": [layer.id for layer in report.layers if visible_layers.get(layer.id, True)],
+            "exportedLayers": sorted(exported_layers),
         },
     }
 
@@ -295,6 +397,9 @@ def export_property_report(
     if not features:
         raise ValueError("No features available for export")
 
+    features = _merge_polygon_features(features)
+    features = [_ensure_polygon_area(feature) for feature in features]
+
     style_options = StyleOptions(
         fillOpacity=0.4,
         strokeWidth=2.0,
@@ -313,10 +418,6 @@ def export_property_report(
         content = export_kmz(features, style_options)
         return {"content": content, "media_type": "application/vnd.google-earth.kmz"}
 
-    geojson = build_property_report_geojson(
-        report,
-        visible_layers=visible_layers,
-        include_parcels=include_parcels,
-    )
-    logger.info("Exporting property report to GeoJSON with %d features", len(geojson.get("features", [])))
+    geojson = build_property_report_geojson(report, features)
+    logger.info("Exporting property report to GeoJSON with %d features", len(features))
     return {"content": geojson, "media_type": "application/geo+json"}
