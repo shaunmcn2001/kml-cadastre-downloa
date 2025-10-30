@@ -74,6 +74,11 @@ export function ConnectionTroubleshooter({ onConnectionSuccess }: ConnectionTrou
     window.open(`${config.BACKEND_URL}/healthz`, '_blank');
   };
 
+  const skipBackendCheck = () => {
+    localStorage.setItem('skipBackendCheck', 'true');
+    window.location.reload();
+  };
+
   return (
     <div className="h-screen flex items-center justify-center bg-background p-4">
       <Card className="max-w-md w-full">
@@ -129,6 +134,14 @@ export function ConnectionTroubleshooter({ onConnectionSuccess }: ConnectionTrou
                 </>
               )}
             </Button>
+
+            <button
+              type="button"
+              onClick={skipBackendCheck}
+              className="mt-3 w-full rounded-md bg-gray-200 py-2 text-gray-700 hover:bg-gray-300 transition text-sm font-medium"
+            >
+              Skip for now (Dev Mode)
+            </button>
 
             {testResult === 'success' && (
               <Alert>

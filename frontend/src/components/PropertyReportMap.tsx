@@ -382,37 +382,22 @@ export function PropertyReportMap({
     }
   };
 
-  const badgeEntries = useMemo(
-    () =>
-      layers.map((layer, index) => {
-        const fallbackColor = layer.color || fallbackPalette[index % fallbackPalette.length];
-        return {
-          id: layer.id,
-          label: layer.label,
-          geometryType: layer.geometryType,
-          color: resolveDatasetColor(layer.id, fallbackColor),
-          active: layerVisibility[layer.id] !== false,
-        };
-      }),
-    [layers, layerVisibility, datasetColors]
-  );
-
   return (
     <Card className="h-full flex flex-col min-h-[520px]">
-      <CardHeader className="pb-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="text-base flex items-center gap-2">
+      <CardHeader className="px-4 py-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2 text-slate-700">
             <MapPin className="w-4 h-4" />
             Property Report Map
           </CardTitle>
 
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 text-xs">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 text-xs text-slate-600">
             <div className="flex items-center gap-2">
-              <Label htmlFor="property-basemap" className="text-xs font-medium text-muted-foreground">
+              <Label htmlFor="property-basemap" className="text-[11px] font-medium text-muted-foreground">
                 Base Layer
               </Label>
               <Select value={baseLayer} onValueChange={(value: BaseLayerKey) => setBaseLayer(value)}>
-                <SelectTrigger id="property-basemap" className="h-8 w-[180px] text-xs">
+                <SelectTrigger id="property-basemap" className="h-8 w-[160px] text-xs">
                   <SelectValue placeholder="Select basemap" />
                 </SelectTrigger>
                 <SelectContent className="text-xs">
@@ -457,7 +442,7 @@ export function PropertyReportMap({
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 mt-4">
+        <div className="flex flex-col gap-2 mt-2">
           {layers.map((layer, index) => {
             const color = resolveDatasetColor(
               layer.id,
@@ -472,22 +457,15 @@ export function PropertyReportMap({
                 className={`group flex items-center justify-between rounded-xl border px-3 py-2 text-left transition ${
                   active ? 'border-primary/40 bg-primary/10 shadow-sm' : 'border-border hover:bg-muted'
                 }`}
+                style={active ? { borderColor: color } : undefined}
               >
                 <div className="flex items-center gap-3 pointer-events-none">
-                  <span
-                    className="inline-flex h-3.5 w-3.5 flex-shrink-0 rounded-full border"
-                    style={{
-                      backgroundColor: color,
-                      borderColor: color,
-                      opacity: active ? 0.85 : 0.25,
-                    }}
-                  />
                   <div className="flex flex-col">
-                    <span className={`text-xs font-medium ${active ? 'text-foreground' : 'text-muted-foreground'}`}>
+                    <span className={`text-xs font-medium ${active ? 'text-slate-700' : 'text-muted-foreground'}`}>
                       {layer.label}
                     </span>
-                    <span className="text-[11px] text-muted-foreground/70">
-                      {layer.group ? `${layer.group} · ${layer.geometryType}` : layer.geometryType}
+                    <span className="text-[11px] uppercase tracking-wide text-slate-500">
+                      {layer.group ? `${layer.group} • ${layer.geometryType}` : layer.geometryType}
                     </span>
                   </div>
                 </div>
@@ -502,37 +480,6 @@ export function PropertyReportMap({
 
       <CardContent className="flex-1 p-0 flex flex-col">
         <div className="relative flex-1 min-h-[480px] overflow-hidden rounded-b-lg">
-          {badgeEntries.length > 0 && (
-            <div className="pointer-events-none absolute left-4 right-4 top-4 z-[401] flex flex-wrap gap-3 sm:left-6 sm:right-6">
-              {badgeEntries.map(entry => (
-                <div
-                  key={entry.id}
-                  className={`pointer-events-auto flex flex-1 min-w-[180px] items-center justify-between rounded-2xl border px-4 py-3 shadow-sm transition ${
-                    entry.active ? 'border-primary/30 bg-background/90' : 'border-border bg-muted/70'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className="inline-flex h-4 w-4 rounded-full border-2 border-white shadow"
-                      style={{
-                        backgroundColor: entry.color,
-                        opacity: entry.active ? 0.95 : 0.25,
-                      }}
-                    />
-                    <div className="flex flex-col">
-                      <span className={`text-sm font-medium ${entry.active ? 'text-foreground' : 'text-muted-foreground'}`}>
-                        {entry.label}
-                      </span>
-                      <span className="text-[11px] uppercase tracking-wide text-muted-foreground/70">{entry.geometryType}</span>
-                    </div>
-                  </div>
-                  <Badge variant="secondary" className="text-[10px] px-2 py-0">
-                    {entry.active ? 'Visible' : 'Hidden'}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          )}
           <MapContainer
             center={[-23.5, 146.3]}
             zoom={6}

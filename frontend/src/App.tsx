@@ -23,6 +23,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isQuerying, setIsQuerying] = useState(false);
   const [backendError, setBackendError] = useState<string | null>(null);
+  const [devSkipBackend, setDevSkipBackend] = useState(() => localStorage.getItem('skipBackendCheck') === 'true');
   const [activeView, setActiveView] = useState<'cadastre' | 'property-reports' | 'grazing-maps' | 'smartmaps'>('cadastre');
   const [landTypeAvailable, setLandTypeAvailable] = useState(false);
   const [landTypeEnabled, setLandTypeEnabled] = useState(false);
@@ -63,6 +64,10 @@ function App() {
   }, [updateNavIndicator]);
 
   const testBackendConnection = async () => {
+    if (devSkipBackend) {
+      localStorage.removeItem('skipBackendCheck');
+      setDevSkipBackend(false);
+    }
     try {
       setIsLoading(true);
       setBackendError(null);
@@ -89,11 +94,20 @@ function App() {
           setLandTypeData(null);
           lastLandTypeKeyRef.current = null;
         }
-        
+
+        const skipBackend = localStorage.getItem('skipBackendCheck') === 'true';
+        setDevSkipBackend(skipBackend);
+        if (skipBackend) {
+          console.warn('⚠️ Backend connection skipped for frontend design mode.');
+          setIsLoading(false);
+          setBackendError(null);
+          return;
+        }
+
         // Test backend connectivity with retry
         let retryCount = 0;
         const maxRetries = 3;
-        
+
         while (retryCount < maxRetries) {
           try {
             await apiClient.healthCheck();
@@ -355,7 +369,7 @@ function App() {
   }
 
   // Show connection troubleshooter if there's a backend error
-  if (backendError) {
+  if (backendError && !devSkipBackend) {
     return (
       <>
         <ConnectionTroubleshooter onConnectionSuccess={() => setBackendError(null)} />
@@ -366,6 +380,22 @@ function App() {
 
   return (
     <div className="h-screen flex flex-col bg-background">
+      {devSkipBackend && (
+        <div className="bg-yellow-50 text-yellow-800 text-center py-1 text-sm">
+          Running in frontend-only dev mode. Backend connection skipped.
+          <button
+            type="button"
+            className="ml-3 rounded-md bg-yellow-200 px-2 py-0.5 text-xs font-semibold text-yellow-900 hover:bg-yellow-300 transition"
+            onClick={() => {
+              localStorage.removeItem('skipBackendCheck');
+              setDevSkipBackend(false);
+              window.location.reload();
+            }}
+          >
+            Reconnect Backend
+          </button>
+        </div>
+      )}
       <header className="border-b bg-card px-6 py-4">
         <div className="flex flex-col gap-6">
           <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start sm:justify-between">

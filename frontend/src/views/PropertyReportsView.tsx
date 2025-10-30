@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { CaretDown } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -36,6 +37,7 @@ export function PropertyReportsView() {
   const [report, setReport] = useState<PropertyReportResponse | null>(null);
   const [layerVisibility, setLayerVisibility] = useState<Record<string, boolean>>({});
   const [selectAll, setSelectAll] = useState(false);
+  const [collapsedFamilies, setCollapsedFamilies] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const fetchLayers = async () => {
@@ -169,15 +171,104 @@ export function PropertyReportsView() {
       }
       groups.get(key)!.push(dataset);
     });
+
     const order = ['Polygons', 'Water', 'Points', 'Other'];
+
+    const formatTitle = (value: string) => {
+      const cleaned = value.replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!cleaned) return 'Dataset Group';
+      return cleaned.replace(/\b(\w)/g, (_, ch: string) => ch.toUpperCase());
+    };
+
     return Array.from(groups.entries())
-      .map(([group, items]) => ({
-        group,
-        items,
-        order: order.includes(group) ? order.indexOf(group) : order.length,
-      }))
+      .map(([group, items]) => {
+        const descriptionCounts = items.reduce<Record<string, number>>((acc, dataset) => {
+          const key = (dataset.description || '').trim().toLowerCase();
+          if (!key) {
+            return acc;
+          }
+          acc[key] = (acc[key] || 0) + 1;
+          return acc;
+        }, {});
+
+        const familyMap = new Map<string, PropertyLayerMeta[]>();
+        const singles: PropertyLayerMeta[] = [];
+
+        items.forEach((dataset) => {
+          const rawDescription = (dataset.description || '').trim();
+          const key = rawDescription.toLowerCase();
+          if (rawDescription && descriptionCounts[key] > 1) {
+            const title = formatTitle(rawDescription);
+            const members = familyMap.get(title) || [];
+            members.push(dataset);
+            familyMap.set(title, members);
+          } else {
+            singles.push(dataset);
+          }
+        });
+
+        const families = Array.from(familyMap.entries()).map(([title, familyItems]) => ({
+          title,
+          key: `${group}:${title.toLowerCase()}`,
+          datasets: familyItems,
+        }));
+
+        return {
+          group,
+          order: order.includes(group) ? order.indexOf(group) : order.length,
+          singles,
+          families,
+        };
+      })
       .sort((a, b) => a.order - b.order || a.group.localeCompare(b.group));
   }, [datasets]);
+
+  const toggleFamilyVisibility = (key: string) => {
+    setCollapsedFamilies(prev => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  const renderDatasetButton = (dataset: PropertyLayerMeta) => {
+    const selected = selectAll || selectedDatasetIds.includes(dataset.id);
+    const color = datasetColors[dataset.id] || fallbackColors[0];
+    const disabled = selectAll;
+
+    return (
+      <button
+        key={dataset.id}
+        type="button"
+        disabled={disabled}
+        onClick={() => handleDatasetToggle(dataset.id)}
+        className={`w-full text-left rounded-xl border px-3 py-3 transition ${
+          selected
+            ? 'border-primary/50 bg-primary/10 shadow-sm'
+            : 'border-border bg-background hover:border-primary/30 hover:bg-muted/60'
+        } ${disabled ? 'cursor-not-allowed opacity-70' : ''}`}
+        style={selected ? { borderColor: color } : undefined}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1">
+            <p className={`text-sm font-semibold ${selected ? 'text-slate-700' : 'text-muted-foreground'}`}>
+              {dataset.label}
+            </p>
+            <p className="mt-1 text-xs uppercase tracking-wide text-slate-500">
+              {dataset.group ? `${dataset.group} • ${dataset.geometryType}` : dataset.geometryType}
+            </p>
+            {dataset.description && (
+              <p className="mt-1 text-xs leading-snug text-slate-600">
+                {dataset.description}
+              </p>
+            )}
+          </div>
+          <span className="ml-3 rounded-full border border-border/60 bg-background/80 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground/80">
+            {dataset.geometryType}
+          </span>
+        </div>
+      </button>
+    );
+  };
 
   return (
     <div className="flex-1 flex overflow-hidden">
@@ -247,54 +338,47 @@ export function PropertyReportsView() {
                 </div>
 
                 <div className="space-y-4">
-                  {datasetGroups.map(({ group, items }, groupIndex) => (
+                  {datasetGroups.map(({ group, singles, families }) => (
                     <div key={group}>
                       <p className="text-[11px] uppercase tracking-wide text-muted-foreground/80 mb-2">
                         {group}
                       </p>
                       <div className="space-y-3">
-                        {items.map((dataset, index) => {
-                          const selected = selectAll || selectedDatasetIds.includes(dataset.id);
-                          const color = datasetColors[dataset.id] || fallbackColors[(groupIndex + index) % fallbackColors.length];
+                        {families.map(family => {
+                          const isCollapsed = collapsedFamilies[family.key] ?? false;
                           return (
-                            <button
-                              key={dataset.id}
-                              type="button"
-                              disabled={selectAll}
-                              onClick={() => handleDatasetToggle(dataset.id)}
-                              className={`w-full text-left rounded-2xl border px-4 py-3 transition-all ${
-                                selected
-                                  ? 'border-primary/50 bg-primary/10 shadow-lg shadow-primary/10'
-                                  : 'border-border bg-background hover:border-primary/30 hover:bg-muted/60'
-                              } ${selectAll ? 'cursor-not-allowed opacity-75' : ''}`}
+                            <div
+                              key={family.key}
+                              className="rounded-2xl border border-border/70 bg-muted/10"
                             >
-                              <div className="flex items-center gap-3">
-                                <span
-                                  className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border-4 border-background text-xs font-semibold text-white shadow-inner"
-                                  style={{ backgroundColor: color, opacity: selected ? 0.95 : 0.25 }}
-                                />
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <span className={`text-sm font-semibold ${selected ? 'text-foreground' : 'text-muted-foreground'}`}>
-                                      {dataset.label}
-                                    </span>
-                                    <span className="rounded-full border border-border/60 bg-background/80 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground/80">
-                                      {dataset.geometryType}
-                                    </span>
-                                    {selectAll && (
-                                      <Badge variant="secondary" className="text-[10px] px-1 py-0">All</Badge>
-                                    )}
-                                  </div>
-                                  {dataset.description && (
-                                    <p className="mt-2 text-[11px] leading-snug text-muted-foreground/70">
-                                      {dataset.description}
-                                    </p>
-                                  )}
+                              <button
+                                type="button"
+                                onClick={() => toggleFamilyVisibility(family.key)}
+                                className="flex w-full items-center justify-between px-3 py-2 text-left"
+                              >
+                                <div className="flex flex-col">
+                                  <span className="text-sm font-semibold text-slate-700">{family.title}</span>
+                                  <span className="text-[11px] uppercase tracking-wide text-slate-500">Grouped datasets</span>
                                 </div>
-                              </div>
-                            </button>
+                                <CaretDown
+                                  className={`h-4 w-4 text-slate-500 transition-transform ${isCollapsed ? '-rotate-90' : 'rotate-0'}`}
+                                  weight="bold"
+                                />
+                              </button>
+                              {!isCollapsed && (
+                                <div className="space-y-2 px-3 pb-3">
+                                  {family.datasets.map(renderDatasetButton)}
+                                </div>
+                              )}
+                            </div>
                           );
                         })}
+
+                        {singles.length > 0 && (
+                          <div className="space-y-2">
+                            {singles.map(renderDatasetButton)}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
