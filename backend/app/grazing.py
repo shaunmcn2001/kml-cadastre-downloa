@@ -157,7 +157,7 @@ def _points_from_shapefile_zip(data: bytes) -> List[Point]:
 
 def _project_geometry(geom, forward: bool = True):
     transformer = TO_METRIC if forward else TO_GEODETIC
-    return transform(lambda x, y: transformer.transform(x, y), geom)
+    return transform(lambda x, y, z=None: transformer.transform(x, y), geom)
 
 
 def _ensure_multipolygon(geom) -> MultiPolygon:
