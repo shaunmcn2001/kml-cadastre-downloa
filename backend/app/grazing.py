@@ -1,6 +1,7 @@
 import base64
 import io
 import logging
+import math
 import os
 import tempfile
 import zipfile
@@ -367,7 +368,21 @@ def _connector_width_from_tightness(tightness_percent: Optional[float]) -> float
     return min_width + factor * (max_width - min_width)
 
 
-def _build_connector_lines(components: Sequence[Polygon]) -> List[LineString]:
+def _extend_line_segment(point_a: Point, point_b: Point, overlap: float) -> LineString:
+    ax, ay = point_a.x, point_a.y
+    bx, by = point_b.x, point_b.y
+    dx = bx - ax
+    dy = by - ay
+    length = math.hypot(dx, dy)
+    if length == 0:
+        return LineString([point_a.coords[0], point_b.coords[0]])
+    factor = overlap / length
+    extended_start = (ax - dx * factor, ay - dy * factor)
+    extended_end = (bx + dx * factor, by + dy * factor)
+    return LineString([extended_start, extended_end])
+
+
+def _build_connector_lines(components: Sequence[Polygon], overlap: float) -> List[LineString]:
     polygons = [poly.buffer(0) for poly in components if not poly.is_empty]
     count = len(polygons)
     if count <= 1:
@@ -408,7 +423,8 @@ def _build_connector_lines(components: Sequence[Polygon]) -> List[LineString]:
         coords_b = point_b.coords[0]
         if coords_a == coords_b:
             continue
-        connectors.append(LineString([coords_a, coords_b]))
+        extended = _extend_line_segment(point_a, point_b, overlap)
+        connectors.append(extended)
         union(i, j)
 
     return connectors
@@ -780,12 +796,12 @@ def _run_basic_method(
 
     components = _extract_polygons_from_geom(buffer_union_metric)
     connector_width = _connector_width_from_tightness(tightness_percent)
-    connector_lines = _build_connector_lines(components)
+    connector_lines = _build_connector_lines(components, connector_width)
 
     developed_metric = base_union_metric
     if connector_lines:
         connector_polys = [
-            line.buffer(connector_width / 2.0, cap_style=2, join_style=2)
+            line.buffer(connector_width / 2.0, cap_style=1, join_style=2)
             for line in connector_lines
             if not line.is_empty and line.length > 0
         ]
