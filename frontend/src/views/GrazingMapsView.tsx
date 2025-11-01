@@ -37,6 +37,8 @@ const downloadsMeta: DownloadItem[] = [
 const DEFAULT_BASIC_COLOR = '#5EC68F';
 const DEFAULT_RING_COLORS = ['#5EC68F', '#4FA679', '#FCEE9C'];
 const DEFAULT_TIGHTNESS_PERCENT = 100;
+const MIN_TIGHTNESS_PERCENT = 0;
+const MAX_TIGHTNESS_PERCENT = 100;
 const ADVANCED_RING_BREAKS = [0.5, 1.5, 3.0];
 const MAP_FILL_OPACITY = 0.4;
 const MAP_OUTLINE_COLOR = '#000000';
@@ -65,7 +67,7 @@ export function GrazingMapsView() {
   const [ringColors, setRingColors] = useState<string[]>(() => [...DEFAULT_RING_COLORS]);
   const [basicHexInput, setBasicHexInput] = useState<string>(DEFAULT_BASIC_COLOR);
   const [ringHexInputs, setRingHexInputs] = useState<string[]>(() => [...DEFAULT_RING_COLORS]);
-  const [basicAlpha, setBasicAlpha] = useState<string>('');
+  const [basicTightness, setBasicTightness] = useState<string>('');
   const [buffers, setBuffers] = useState<GrazingFeatureCollection | null>(null);
   const [convex, setConvex] = useState<GrazingFeatureCollection | null>(null);
   const [rings, setRings] = useState<GrazingFeatureCollection | null>(null);
@@ -202,24 +204,24 @@ export function GrazingMapsView() {
     setBasicHexInput(DEFAULT_BASIC_COLOR);
   }, []);
 
-  const handleBasicAlphaChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    setBasicAlpha(event.target.value);
+  const handleBasicTightnessChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setBasicTightness(event.target.value);
   }, []);
 
-  const handleBasicAlphaBlur = useCallback(() => {
-    const trimmed = basicAlpha.trim();
+  const handleBasicTightnessBlur = useCallback(() => {
+    const trimmed = basicTightness.trim();
     if (trimmed.length === 0) {
-      setBasicAlpha('');
+      setBasicTightness('');
       return;
     }
     const numeric = Number.parseFloat(trimmed);
     if (!Number.isFinite(numeric)) {
-      setBasicAlpha('');
+      setBasicTightness('');
       return;
     }
-    const clamped = Math.min(MAX_CONCAVE_ALPHA, Math.max(MIN_CONCAVE_ALPHA, numeric));
-    setBasicAlpha(clamped.toString());
-  }, [basicAlpha]);
+    const clamped = Math.min(MAX_TIGHTNESS_PERCENT, Math.max(MIN_TIGHTNESS_PERCENT, numeric));
+    setBasicTightness(clamped.toString());
+  }, [basicTightness]);
 
   const handleRingColorPickerChange = useCallback((index: number, value: string) => {
     const fallback = DEFAULT_RING_COLORS[Math.min(index, DEFAULT_RING_COLORS.length - 1)];
@@ -340,18 +342,18 @@ export function GrazingMapsView() {
         setRingColors(sanitizedRingColors);
       }
 
-      let sanitizedAlpha: number | undefined;
+      let sanitizedTightness: number | undefined;
       if (method === 'basic') {
-        const trimmedAlpha = basicAlpha.trim();
-        if (trimmedAlpha.length > 0) {
-          const parsedAlpha = Number.parseFloat(trimmedAlpha);
-          if (Number.isFinite(parsedAlpha)) {
-            sanitizedAlpha = Math.min(MAX_CONCAVE_ALPHA, Math.max(MIN_CONCAVE_ALPHA, parsedAlpha));
-            if (sanitizedAlpha.toString() !== trimmedAlpha) {
-              setBasicAlpha(sanitizedAlpha.toString());
+        const trimmed = basicTightness.trim();
+        if (trimmed.length > 0) {
+          const parsed = Number.parseFloat(trimmed);
+          if (Number.isFinite(parsed)) {
+            sanitizedTightness = Math.min(MAX_TIGHTNESS_PERCENT, Math.max(MIN_TIGHTNESS_PERCENT, parsed));
+            if (sanitizedTightness.toString() !== trimmed) {
+              setBasicTightness(sanitizedTightness.toString());
             }
           } else {
-            setBasicAlpha('');
+            setBasicTightness('');
           }
         }
       }
@@ -363,7 +365,7 @@ export function GrazingMapsView() {
         folderName: trimmedFolder ? trimmedFolder : undefined,
         colorBasic: sanitizedBasicColor,
         colorRings: sanitizedRingColors,
-        alphaBasic: method === 'basic' ? sanitizedAlpha : undefined,
+        tightnessPercent: method === 'basic' ? sanitizedTightness : undefined,
       });
       setSummary(result.summary);
       setDownloads(result.downloads);
@@ -390,7 +392,7 @@ export function GrazingMapsView() {
       setIsProcessing(false);
     }
   }, [
-    basicAlpha,
+    basicTightness,
     basicColor,
     basicHexInput,
     boundaryFile,
@@ -615,23 +617,23 @@ export function GrazingMapsView() {
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                      Concave Hull Alpha
+                      Hull Tightness (%)
                     </Label>
                     <div className="flex flex-wrap items-center gap-2">
                       <Input
                         type="number"
-                        step="0.0001"
-                        min={MIN_CONCAVE_ALPHA}
-                        max={MAX_CONCAVE_ALPHA}
-                        value={basicAlpha}
-                        onChange={handleBasicAlphaChange}
-                        onBlur={handleBasicAlphaBlur}
+                        step={1}
+                        min={MIN_TIGHTNESS_PERCENT}
+                        max={MAX_TIGHTNESS_PERCENT}
+                        value={basicTightness}
+                        onChange={handleBasicTightnessChange}
+                        onBlur={handleBasicTightnessBlur}
                         className="w-32 text-xs"
-                        aria-label="Concave hull alpha"
-                        placeholder="Auto"
+                        aria-label="Concave hull tightness percentage"
+                        placeholder={`${DEFAULT_TIGHTNESS_PERCENT}`}
                       />
                       <span className="text-[11px] text-muted-foreground">
-                        Leave blank for auto. Smaller = tighter hull, larger = smoother (range {MIN_CONCAVE_ALPHA}–{MAX_CONCAVE_ALPHA}).
+                        Leave blank for auto (≈{DEFAULT_TIGHTNESS_PERCENT}%). Lower values loosen the hull; 100% keeps it as tight as possible.
                       </span>
                     </div>
                   </div>
@@ -774,7 +776,15 @@ export function GrazingMapsView() {
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-muted-foreground">
-                        <span>Alpha parameter</span>
+                        <span>Tightness</span>
+                        <span>
+                          {typeof summary.concaveTightness === 'number'
+                            ? `${summary.concaveTightness.toFixed(0)}%`
+                            : 'auto'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-muted-foreground">
+                        <span>Alpha</span>
                         <span>
                           {typeof summary.concaveAlpha === 'number'
                             ? summary.concaveAlpha.toPrecision(4)

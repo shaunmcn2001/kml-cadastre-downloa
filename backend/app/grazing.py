@@ -663,19 +663,6 @@ def _feature_collection_from_polygons(
             )
         )
     return GrazingFeatureCollection(features=features)
-
-
-def _percent_to_alpha(percent: float, auto_alpha: float) -> float:
-    clamped = max(0.0, min(100.0, percent))
-    if clamped == 100.0:
-        return MAX_CONCAVE_ALPHA
-    if clamped == 0.0:
-        # ensure loose hull isn't larger than auto
-        return min(auto_alpha * 5, MAX_CONCAVE_ALPHA)
-    scale = clamped / 100.0
-    return max(MIN_CONCAVE_ALPHA, min(MAX_CONCAVE_ALPHA, auto_alpha * (1 + (1 - scale))))
-
-
 def _run_basic_method(
     points: List[Point],
     boundary_wgs: MultiPolygon,
@@ -683,7 +670,7 @@ def _run_basic_method(
     projected_points: Sequence[Point],
     base_name: Optional[str],
     buffer_color: str,
-    alpha_override: Optional[float],
+    tightness_percent: Optional[float],
 ) -> GrazingProcessResponse:
     projected_buffers = [point.buffer(BUFFER_DISTANCE_METERS) for point in projected_points]
     buffer_union_metric = _ensure_multipolygon(unary_union(projected_buffers))
@@ -694,12 +681,12 @@ def _run_basic_method(
     buffer_union_metric = _ensure_multipolygon(clipped_buffers)
 
     auto_alpha = _auto_alpha(projected_points)
-    if alpha_override is not None:
-        used_alpha = max(MIN_CONCAVE_ALPHA, min(MAX_CONCAVE_ALPHA, alpha_override))
-        tightness = (used_alpha / auto_alpha) * 100 if auto_alpha > 0 else 100.0
+    if tightness_percent is not None:
+        tightness = max(0.0, min(100.0, tightness_percent))
+        used_alpha = _percent_to_alpha(tightness, auto_alpha)
     else:
-        used_alpha = auto_alpha
         tightness = 100.0
+        used_alpha = auto_alpha
 
     concave_metric = _compute_concave_hull(buffer_union_metric, used_alpha)
     concave_metric = _ensure_multipolygon(concave_metric)
@@ -964,9 +951,9 @@ async def process_grazing_upload(
 
     if method_normalized == "basic":
         color = _normalize_hex(colorBasic or DEFAULT_BASIC_COLOR, DEFAULT_BASIC_COLOR)
-        alpha_value: Optional[float] = None
+        tightness_percent: Optional[float] = None
         if alphaBasic is not None:
-            alpha_value = max(MIN_CONCAVE_ALPHA, min(MAX_CONCAVE_ALPHA, alphaBasic))
+            tightness_percent = max(0.0, min(100.0, alphaBasic))
         return _run_basic_method(
             points,
             boundary_wgs,
@@ -974,7 +961,7 @@ async def process_grazing_upload(
             projected_points,
             folderName,
             color,
-            alpha_value,
+            tightness_percent,
         )
 
     ring_colors = [
