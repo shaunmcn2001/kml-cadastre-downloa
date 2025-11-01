@@ -237,6 +237,7 @@ export interface GrazingRingSummary {
   label: string;
   weight: number;
   areaHa: number;
+  hullAreaHa?: number;
 }
 
 export interface GrazingSummary {
@@ -251,6 +252,7 @@ export interface GrazingProcessResponse {
   buffers?: GrazingFeatureCollection | null;
   convexHull?: GrazingFeatureCollection | null;
   rings?: GrazingFeatureCollection | null;
+  ringHulls?: GrazingFeatureCollection | null;
   summary: GrazingSummary;
   downloads: Record<'kml' | 'kmz' | 'shp', GrazingDownloadPayload>;
 }

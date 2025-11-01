@@ -28,7 +28,7 @@ interface DownloadItem {
 const downloadsMeta: DownloadItem[] = [
   { key: 'kmz', label: 'Download KMZ', description: 'Google Earth compatible (compressed)' },
   { key: 'kml', label: 'Download KML', description: 'Standard KML polygon output' },
-  { key: 'shp', label: 'Download Shapefile', description: 'Zipped ESRI Shapefile with areas' },
+  { key: 'shp', label: 'Download Shapefile', description: 'Zipped ESRI Shapefiles with areas' },
 ];
 
 export function GrazingMapsView() {
@@ -38,6 +38,7 @@ export function GrazingMapsView() {
   const [buffers, setBuffers] = useState<GrazingFeatureCollection | null>(null);
   const [convex, setConvex] = useState<GrazingFeatureCollection | null>(null);
   const [rings, setRings] = useState<GrazingFeatureCollection | null>(null);
+  const [ringHulls, setRingHulls] = useState<GrazingFeatureCollection | null>(null);
   const [summary, setSummary] = useState<GrazingSummary | null>(null);
   const [downloads, setDownloads] = useState<GrazingProcessResponse['downloads'] | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -77,6 +78,7 @@ export function GrazingMapsView() {
     setRings(null);
     setSummary(null);
     setDownloads(null);
+    setRingHulls(null);
   }, []);
 
   const handleMethodChange = useCallback(
@@ -138,7 +140,7 @@ export function GrazingMapsView() {
     setUploadError(null);
 
     try {
-      const result = await apiClient.processGrazing(pointsFile, method, boundaryFile);
+      const result = await apiClient.processGrazing(pointsFile, method, boundaryFile ?? undefined);
       setSummary(result.summary);
       setDownloads(result.downloads);
 
@@ -148,11 +150,12 @@ export function GrazingMapsView() {
         setRings(null);
       } else {
         setRings(result.rings ?? null);
+        setRingHulls(result.ringHulls ?? null);
         setBuffers(null);
         setConvex(null);
       }
 
-      fitToResults([result.buffers ?? null, result.convexHull ?? null, result.rings ?? null]);
+      fitToResults([result.buffers ?? null, result.convexHull ?? null, result.rings ?? null, result.ringHulls ?? null]);
       toast.success(result.method === 'basic' ? 'Grazing buffers generated successfully' : 'Advanced grazing rings generated');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to process grazing maps';
@@ -219,8 +222,19 @@ export function GrazingMapsView() {
     [],
   );
 
+  const ringHullLayerStyle = useMemo(
+    () => ({
+      color: '#ea580c',
+      weight: 2,
+      dashArray: '6 4',
+      fillColor: '#fb923c',
+      fillOpacity: 0.18,
+    }),
+    [],
+  );
+
   const hasBasicResults = Boolean(method === 'basic' && buffers && convex && summary);
-  const hasAdvancedResults = Boolean(method === 'advanced' && rings && summary);
+  const hasAdvancedResults = Boolean(method === 'advanced' && (rings || ringHulls) && summary);
   const hasResults = hasBasicResults || hasAdvancedResults;
 
   return (
@@ -243,6 +257,9 @@ export function GrazingMapsView() {
             )}
             {rings && (
               <GeoJSON key="rings" data={rings as any} style={() => ringLayerStyle} />
+            )}
+            {ringHulls && (
+              <GeoJSON key="ring-hulls" data={ringHulls as any} style={() => ringHullLayerStyle} />
             )}
           </MapContainer>
 
@@ -362,34 +379,52 @@ export function GrazingMapsView() {
               )}
 
               {summary && (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <div className="space-y-3 text-xs">
+                  <div className="flex flex-wrap items-center gap-3 text-muted-foreground">
                     <Badge variant="secondary" className="px-2 py-0.5">
                       {summary.pointCount} point{summary.pointCount === 1 ? '' : 's'}
                     </Badge>
-                    <span>Total area: <strong>{summary.bufferAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</strong></span>
+                    <span>
+                      Total polygon area: <strong>{summary.bufferAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</strong>
+                    </span>
+                    {method === 'advanced' && (
+                      <span>
+                        Total hull area: <strong>{summary.convexAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</strong>
+                      </span>
+                    )}
                   </div>
-                  {summary.ringClasses && summary.ringClasses.length > 0 ? (
-                    <div className="rounded-lg border bg-muted/40 p-3 text-xs space-y-2">
+
+                  {method === 'advanced' && summary.ringClasses && summary.ringClasses.length > 0 ? (
+                    <div className="rounded-lg border bg-muted/40 p-3 space-y-2">
                       <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Ring Classes</div>
                       <div className="space-y-1">
                         {summary.ringClasses.map((ring) => (
-                          <div key={ring.label} className="flex items-center justify-between">
-                            <span className="font-medium">{ring.label} km</span>
-                            <span className="text-muted-foreground">Weight {ring.weight.toFixed(2)} • {ring.areaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</span>
+                          <div key={ring.label} className="flex flex-col gap-0.5 text-muted-foreground">
+                            <div className="flex items-center justify-between text-foreground">
+                              <span className="font-medium">{ring.label} km</span>
+                              <span>Weight {ring.weight.toFixed(2)}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span>Ring area</span>
+                              <span>{ring.areaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span>Convex hull area</span>
+                              <span>{ring.hullAreaHa?.toLocaleString(undefined, { maximumFractionDigits: 2 }) ?? '—'} ha</span>
+                            </div>
                           </div>
                         ))}
                       </div>
                     </div>
                   ) : (
-                    <div className="rounded-lg border bg-muted/40 p-3 text-xs space-y-2">
+                    <div className="rounded-lg border bg-muted/40 p-3 space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="font-medium">3 km Buffers</span>
-                        <span>{summary.bufferAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</span>
+                        <span className="font-medium text-foreground">3 km Buffers</span>
+                        <span className="text-muted-foreground">{summary.bufferAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="font-medium">Smoothed Convex Hull</span>
-                        <span>{summary.convexAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</span>
+                        <span className="font-medium text-foreground">Smoothed Convex Hull</span>
+                        <span className="text-muted-foreground">{summary.convexAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</span>
                       </div>
                     </div>
                   )}

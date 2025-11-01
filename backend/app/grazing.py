@@ -380,23 +380,66 @@ def _create_kmz(kml_bytes: bytes) -> bytes:
     return buffer.getvalue()
 
 
-def _create_rings_kml(labels: List[str], weights: List[float], geoms: List[Polygon | MultiPolygon]) -> bytes:
+def _create_rings_kml(
+    labels: List[str],
+    weights: List[float],
+    geoms: List[Polygon | MultiPolygon],
+    areas: List[float],
+    hulls: List[Polygon | MultiPolygon],
+    hull_areas: List[float],
+) -> bytes:
     doc = Kml()
-    folder = doc.newfolder(name="Grazing Water Zones")
-    for label, weight, geom in zip(labels, weights, geoms):
+    rings_folder = doc.newfolder(name="Distance Rings")
+    hulls_folder = doc.newfolder(name="Ring Convex Hulls")
+
+    for label, weight, geom, area in zip(labels, weights, geoms, areas):
+        description = (
+            "<![CDATA["
+            "<table border='0' cellpadding='4' cellspacing='0' style='font-size:12px;'>"
+            f"<tr><th align='left'>Distance Band</th><td>{label} km</td></tr>"
+            f"<tr><th align='left'>Water Weight</th><td>{weight:.2f}</td></tr>"
+            f"<tr><th align='left'>Area (ha)</th><td>{area:,.2f}</td></tr>"
+            "</table>"
+            "]]>"
+        )
         if isinstance(geom, MultiPolygon):
             for idx, poly in enumerate(geom.geoms, start=1):
-                placemark = folder.newpolygon(name=f"{label} km (part {idx})")
-                placemark.description = f"Weight: {weight}"
+                placemark = rings_folder.newpolygon(name=f"{label} km (part {idx})")
+                placemark.description = description
                 placemark.outerboundaryis.coords = list(poly.exterior.coords)
                 for interior in poly.interiors:
                     placemark.innerboundaryis.append(list(interior.coords))
         else:
-            placemark = folder.newpolygon(name=f"{label} km")
-            placemark.description = f"Weight: {weight}"
+            placemark = rings_folder.newpolygon(name=f"{label} km")
+            placemark.description = description
             placemark.outerboundaryis.coords = list(geom.exterior.coords)
             for interior in geom.interiors:
                 placemark.innerboundaryis.append(list(interior.coords))
+
+    for label, weight, geom, area in zip(labels, weights, hulls, hull_areas):
+        description = (
+            "<![CDATA["
+            "<table border='0' cellpadding='4' cellspacing='0' style='font-size:12px;'>"
+            f"<tr><th align='left'>Distance Band</th><td>{label} km</td></tr>"
+            f"<tr><th align='left'>Water Weight</th><td>{weight:.2f}</td></tr>"
+            f"<tr><th align='left'>Convex Hull Area (ha)</th><td>{area:,.2f}</td></tr>"
+            "</table>"
+            "]]>"
+        )
+        if isinstance(geom, MultiPolygon):
+            for idx, poly in enumerate(geom.geoms, start=1):
+                placemark = hulls_folder.newpolygon(name=f"{label} km Hull (part {idx})")
+                placemark.description = description
+                placemark.outerboundaryis.coords = list(poly.exterior.coords)
+                for interior in poly.interiors:
+                    placemark.innerboundaryis.append(list(interior.coords))
+        else:
+            placemark = hulls_folder.newpolygon(name=f"{label} km Hull")
+            placemark.description = description
+            placemark.outerboundaryis.coords = list(geom.exterior.coords)
+            for interior in geom.interiors:
+                placemark.innerboundaryis.append(list(interior.coords))
+
     return doc.kml().encode("utf-8")
 
 
@@ -405,6 +448,8 @@ def _create_rings_shapefile_zip(
     weights: List[float],
     areas: List[float],
     geoms: List[Polygon | MultiPolygon],
+    hulls: List[Polygon | MultiPolygon],
+    hull_areas: List[float],
 ) -> bytes:
     import tempfile
 
@@ -421,8 +466,27 @@ def _create_rings_shapefile_zip(
 
         writer.close()
 
+        hull_path = os.path.join(tmpdir, "grazing_ring_hulls")
+        hull_writer = shapefile.Writer(hull_path, shapeType=shapefile.POLYGON)
+        hull_writer.field("CLASS_KM", "C", size=32)
+        hull_writer.field("WEIGHT", "F", decimal=2)
+        hull_writer.field("AREA_HA", "F", decimal=2)
+
+        for label, weight, area, geom in zip(labels, weights, hull_areas, hulls):
+            hull_writer.poly(_polygon_parts(geom))
+            hull_writer.record(label, round(weight, 2), round(area, 2))
+
+        hull_writer.close()
+
         prj_path = f"{shp_path}.prj"
         with open(prj_path, "w", encoding="utf-8") as prj_file:
+            prj_file.write(
+                'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563]],'
+                'PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]]'
+            )
+
+        hull_prj_path = f"{hull_path}.prj"
+        with open(hull_prj_path, "w", encoding="utf-8") as prj_file:
             prj_file.write(
                 'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563]],'
                 'PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]]'
@@ -431,8 +495,8 @@ def _create_rings_shapefile_zip(
         output = io.BytesIO()
         with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
             for ext in (".shp", ".shx", ".dbf", ".prj"):
-                filename = f"grazing_rings{ext}"
-                archive.write(f"{shp_path}{ext}", arcname=filename)
+                archive.write(f"{shp_path}{ext}", arcname=f"grazing_rings{ext}")
+                archive.write(f"{hull_path}{ext}", arcname=f"grazing_ring_hulls{ext}")
 
         return output.getvalue()
 
@@ -591,23 +655,40 @@ async def process_grazing_upload(
     if not clean_rings_metric:
         raise HTTPException(status_code=400, detail="Advanced ring buffers collapsed after clipping; no results to export")
 
-    rings_geodetic_raw = [_project_geometry(ring, forward=False) for ring in clean_rings_metric]
-    normalized_rings: List[MultiPolygon] = []
+    normalized_metric: List[MultiPolygon] = []
     normalized_labels: List[str] = []
     normalized_weights: List[float] = []
-    for label, weight, geom in zip(clean_labels, clean_weights, rings_geodetic_raw):
+    for label, weight, geom in zip(clean_labels, clean_weights, clean_rings_metric):
         extracted = _extract_polygons_from_geom(geom)
         if not extracted:
             continue
         merged = _merge_polygons(extracted)
-        normalized_rings.append(merged)
+        normalized_metric.append(merged)
         normalized_labels.append(label)
         normalized_weights.append(weight)
 
-    if not normalized_rings:
+    if not normalized_metric:
         raise HTTPException(status_code=400, detail="Advanced ring buffers collapsed after clipping; no results to export")
 
+    normalized_rings = [_project_geometry(ring, forward=False) for ring in normalized_metric]
+    normalized_rings = [
+        _merge_polygons(_extract_polygons_from_geom(ring))
+        if not isinstance(ring, (Polygon, MultiPolygon))
+        else (_merge_polygons([ring]) if isinstance(ring, Polygon) else ring)
+        for ring in normalized_rings
+    ]
+
     ring_areas = [_calculate_area_ha(ring) for ring in normalized_rings]
+
+    ring_hulls_metric = [ring.convex_hull for ring in normalized_metric]
+    ring_hulls_geodetic = [_project_geometry(hull, forward=False) for hull in ring_hulls_metric]
+    normalized_ring_hulls = [
+        _merge_polygons(_extract_polygons_from_geom(hull))
+        if not isinstance(hull, (Polygon, MultiPolygon))
+        else (_merge_polygons([hull]) if isinstance(hull, Polygon) else hull)
+        for hull in ring_hulls_geodetic
+    ]
+    ring_hull_areas = [_calculate_area_ha(hull) for hull in normalized_ring_hulls]
 
     ring_features = []
     for label, weight, geom, area in zip(normalized_labels, normalized_weights, normalized_rings, ring_areas):
@@ -626,13 +707,54 @@ async def process_grazing_upload(
         )
     rings_fc = GrazingFeatureCollection(features=ring_features)
 
-    rings_kml = _create_rings_kml(normalized_labels, normalized_weights, normalized_rings)
+    ring_hull_features = []
+    for label, weight, geom, area in zip(normalized_labels, normalized_weights, normalized_ring_hulls, ring_hull_areas):
+        ring_hull_features.append(
+            GrazingFeature(
+                type="Feature",
+                geometry=geom.__geo_interface__,
+                properties={
+                    "type": "ring_hull",
+                    "name": f"{label} km Hull",
+                    "distance_class": label,
+                    "weight": weight,
+                    "area_ha": round(area, 3),
+                },
+            )
+        )
+    ring_hulls_fc = GrazingFeatureCollection(features=ring_hull_features)
+
+    rings_kml = _create_rings_kml(
+        normalized_labels,
+        normalized_weights,
+        normalized_rings,
+        ring_areas,
+        normalized_ring_hulls,
+        ring_hull_areas,
+    )
     rings_kmz = _create_kmz(rings_kml)
-    rings_shp = _create_rings_shapefile_zip(normalized_labels, normalized_weights, ring_areas, normalized_rings)
+    rings_shp = _create_rings_shapefile_zip(
+        normalized_labels,
+        normalized_weights,
+        ring_areas,
+        normalized_rings,
+        normalized_ring_hulls,
+        ring_hull_areas,
+    )
 
     ring_summaries = [
-        {"label": label, "weight": weight, "areaHa": round(area, 3)}
-        for label, weight, area in zip(normalized_labels, normalized_weights, ring_areas)
+        {
+            "label": label,
+            "weight": weight,
+            "areaHa": round(area, 3),
+            "hullAreaHa": round(hull_area, 3),
+        }
+        for label, weight, area, hull_area in zip(
+            normalized_labels,
+            normalized_weights,
+            ring_areas,
+            ring_hull_areas,
+        )
     ]
 
     downloads = {
@@ -656,13 +778,14 @@ async def process_grazing_upload(
     summary = GrazingSummary(
         pointCount=len(points),
         bufferAreaHa=round(sum(ring_areas), 3),
-        convexAreaHa=0.0,
+        convexAreaHa=round(sum(ring_hull_areas), 3),
         ringClasses=ring_summaries,
     )
 
     return GrazingProcessResponse(
         method="advanced",
         rings=rings_fc,
+        ringHulls=ring_hulls_fc,
         summary=summary,
         downloads=downloads,
     )
