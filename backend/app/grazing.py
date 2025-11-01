@@ -413,9 +413,9 @@ def _create_kmz(kml_bytes: bytes) -> bytes:
 def _compute_concave_hull(polygons: MultiPolygon, alpha: float) -> MultiPolygon:
     coords: List[Tuple[float, float]] = []
     for poly in polygons.geoms:
-        coords.extend(list(poly.exterior.coords))
+        coords.extend((float(x), float(y)) for x, y, *_ in poly.exterior.coords)
         for interior in poly.interiors:
-            coords.extend(list(interior.coords))
+            coords.extend((float(x), float(y)) for x, y, *_ in interior.coords)
 
     unique_coords = list(dict.fromkeys(coords))  # preserve order while removing duplicates
     if len(unique_coords) < 4:
@@ -424,8 +424,11 @@ def _compute_concave_hull(polygons: MultiPolygon, alpha: float) -> MultiPolygon:
 
     try:
         hull_geom = alphashape.alphashape(unique_coords, alpha)
-    except Exception as exc:  # pragma: no cover - defensive
-        raise HTTPException(status_code=400, detail=f"Concave hull generation failed: {exc}") from exc
+    except Exception:
+        merged = unary_union(polygons)
+        fallback = merged if isinstance(merged, (Polygon, MultiPolygon)) else merged.convex_hull
+        return _ensure_multipolygon(fallback)
+
     hull_polygons = _extract_polygons_from_geom(hull_geom)
     if not hull_polygons:
         merged = unary_union(polygons)
