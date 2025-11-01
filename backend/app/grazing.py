@@ -6,6 +6,7 @@ import zipfile
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import alphashape
+import numpy as np
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastkml import kml as fastkml  # type: ignore[import-untyped]
 from pydantic import BaseModel
@@ -61,6 +62,7 @@ class GrazingSummary(BaseModel):
     pointCount: int
     bufferAreaHa: float = 0.0
     convexAreaHa: float = 0.0
+    concaveAlpha: Optional[float] = None
     ringClasses: List[Dict[str, Any]] = []
 
 
@@ -369,7 +371,7 @@ def _create_basic_kml(
     buffer_color: str,
 ) -> bytes:
     doc = Kml()
-    buffers_folder = doc.newfolder(name="Grazing Buffers 3km")
+    buffers_folder = doc.newfolder(name="3 km Buffers")
     outline_color = OUTLINE_COLOR
     outline_kml = _hex_to_kml_color(outline_color, 1.0)
     fill_kml = _hex_to_kml_color(buffer_color, FILL_OPACITY)
@@ -384,14 +386,14 @@ def _create_basic_kml(
         placemark.style.linestyle.color = outline_kml
         placemark.style.linestyle.width = OUTLINE_WIDTH
 
-    hull_folder = doc.newfolder(name="Concave Hull")
+    hull_folder = doc.newfolder(name="Developed Area")
 
     hull_polys = _extract_polygons_from_geom(hull_geom)
     if not hull_polys:
         hull_polys = _extract_polygons_from_geom(_merge_polygons(buffers.geoms))
 
     for idx, poly in enumerate(hull_polys, start=1):
-        placemark = hull_folder.newpolygon(name=f"Concave Hull {idx}")
+        placemark = hull_folder.newpolygon(name=f"Developed Area {idx}")
         placemark.outerboundaryis.coords = list(poly.exterior.coords)
         for interior in poly.interiors:
             placemark.innerboundaryis.append(list(interior.coords))
@@ -436,6 +438,36 @@ def _compute_concave_hull(polygons: MultiPolygon, alpha: float) -> MultiPolygon:
     return _merge_polygons(hull_polygons)
 
 
+def _auto_alpha(projected_points: Sequence[Point]) -> float:
+    coords = [(float(pt.x), float(pt.y)) for pt in projected_points if isinstance(pt, Point)]
+    if len(coords) < 2:
+        return DEFAULT_CONCAVE_ALPHA
+
+    distances: List[float] = []
+    for idx, (x1, y1) in enumerate(coords):
+        min_dist = None
+        for jdx, (x2, y2) in enumerate(coords):
+            if idx == jdx:
+                continue
+            dist = float(np.hypot(x2 - x1, y2 - y1))
+            if dist <= 0:
+                continue
+            if min_dist is None or dist < min_dist:
+                min_dist = dist
+        if min_dist is not None:
+            distances.append(min_dist)
+
+    if not distances:
+        return DEFAULT_CONCAVE_ALPHA
+
+    mean_dist = float(np.mean(distances))
+    if mean_dist <= 0:
+        return DEFAULT_CONCAVE_ALPHA
+
+    alpha = 1.0 / max(mean_dist * 0.8, MIN_CONCAVE_ALPHA)
+    return max(MIN_CONCAVE_ALPHA, min(MAX_CONCAVE_ALPHA, alpha))
+
+
 def _create_basic_shapefile_zip(
     buffers: MultiPolygon,
     hull: Polygon,
@@ -456,7 +488,7 @@ def _create_basic_shapefile_zip(
             writer.record(f"BUFFER_{idx}", round(area, 2), buffer_color)
 
         writer.poly(_polygon_parts(hull))
-        writer.record("CONCAVE", round(hull_area, 2), buffer_color)
+        writer.record("DEVELOPED_AREA", round(hull_area, 2), buffer_color)
         writer.close()
 
         prj_path = f"{shp_path}.prj"
@@ -627,10 +659,10 @@ def _run_basic_method(
     points: List[Point],
     boundary_wgs: MultiPolygon,
     boundary_metric: MultiPolygon,
-    projected_points: Sequence[Polygon],
+    projected_points: Sequence[Point],
     base_name: Optional[str],
     buffer_color: str,
-    concave_alpha: float,
+    alpha_override: Optional[float],
 ) -> GrazingProcessResponse:
     projected_buffers = [point.buffer(BUFFER_DISTANCE_METERS) for point in projected_points]
     buffer_union_metric = _ensure_multipolygon(unary_union(projected_buffers))
@@ -640,11 +672,20 @@ def _run_basic_method(
         raise HTTPException(status_code=400, detail="Buffer results lie outside the supplied boundary")
     buffer_union_metric = _ensure_multipolygon(clipped_buffers)
 
+    auto_alpha = _auto_alpha(projected_points)
+    used_alpha = alpha_override if alpha_override is not None else auto_alpha
+    used_alpha = max(MIN_CONCAVE_ALPHA, min(MAX_CONCAVE_ALPHA, used_alpha))
+
+    concave_metric = _compute_concave_hull(buffer_union_metric, used_alpha)
+    concave_metric = _ensure_multipolygon(concave_metric)
+    concave_metric = _ensure_multipolygon(concave_metric.intersection(boundary_metric))
+    if concave_metric.is_empty:
+        concave_metric = buffer_union_metric
+
     buffer_geodetic = _ensure_multipolygon(_project_geometry(buffer_union_metric, forward=False).intersection(boundary_wgs))
-    concave_geodetic = _compute_concave_hull(buffer_geodetic, concave_alpha)
-    concave_geodetic = _ensure_multipolygon(concave_geodetic.intersection(boundary_wgs))
+    concave_geodetic = _ensure_multipolygon(_project_geometry(concave_metric, forward=False).intersection(boundary_wgs))
     if concave_geodetic.is_empty:
-        raise HTTPException(status_code=400, detail="Concave hull lies outside the supplied boundary")
+        concave_geodetic = buffer_geodetic
 
     buffer_areas = [_calculate_area_ha(poly) for poly in buffer_geodetic.geoms]
     concave_area = _calculate_area_ha(concave_geodetic)
@@ -704,6 +745,7 @@ def _run_basic_method(
         pointCount=len(points),
         bufferAreaHa=round(sum(buffer_areas), 3),
         convexAreaHa=round(concave_area, 3),
+        concaveAlpha=round(used_alpha, 6),
     )
 
     return GrazingProcessResponse(
@@ -896,10 +938,9 @@ async def process_grazing_upload(
 
     if method_normalized == "basic":
         color = _normalize_hex(colorBasic or DEFAULT_BASIC_COLOR, DEFAULT_BASIC_COLOR)
-        alpha_value = alphaBasic if alphaBasic is not None else DEFAULT_CONCAVE_ALPHA
-        if alpha_value <= 0:
-            alpha_value = DEFAULT_CONCAVE_ALPHA
-        alpha_value = max(MIN_CONCAVE_ALPHA, min(MAX_CONCAVE_ALPHA, alpha_value))
+        alpha_value: Optional[float] = None
+        if alphaBasic is not None:
+            alpha_value = max(MIN_CONCAVE_ALPHA, min(MAX_CONCAVE_ALPHA, alphaBasic))
         return _run_basic_method(
             points,
             boundary_wgs,

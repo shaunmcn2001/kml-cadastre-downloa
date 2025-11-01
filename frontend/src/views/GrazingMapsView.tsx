@@ -67,7 +67,7 @@ export function GrazingMapsView() {
   const [ringColors, setRingColors] = useState<string[]>(() => [...DEFAULT_RING_COLORS]);
   const [basicHexInput, setBasicHexInput] = useState<string>(DEFAULT_BASIC_COLOR);
   const [ringHexInputs, setRingHexInputs] = useState<string[]>(() => [...DEFAULT_RING_COLORS]);
-  const [basicAlpha, setBasicAlpha] = useState<string>(DEFAULT_CONCAVE_ALPHA.toString());
+  const [basicAlpha, setBasicAlpha] = useState<string>('');
   const [buffers, setBuffers] = useState<GrazingFeatureCollection | null>(null);
   const [convex, setConvex] = useState<GrazingFeatureCollection | null>(null);
   const [rings, setRings] = useState<GrazingFeatureCollection | null>(null);
@@ -209,9 +209,14 @@ export function GrazingMapsView() {
   }, []);
 
   const handleBasicAlphaBlur = useCallback(() => {
-    const numeric = Number.parseFloat(basicAlpha);
+    const trimmed = basicAlpha.trim();
+    if (trimmed.length === 0) {
+      setBasicAlpha('');
+      return;
+    }
+    const numeric = Number.parseFloat(trimmed);
     if (!Number.isFinite(numeric)) {
-      setBasicAlpha(DEFAULT_CONCAVE_ALPHA.toString());
+      setBasicAlpha('');
       return;
     }
     const clamped = Math.min(MAX_CONCAVE_ALPHA, Math.max(MIN_CONCAVE_ALPHA, numeric));
@@ -337,14 +342,19 @@ export function GrazingMapsView() {
         setRingColors(sanitizedRingColors);
       }
 
-      let sanitizedAlpha = DEFAULT_CONCAVE_ALPHA;
+      let sanitizedAlpha: number | undefined;
       if (method === 'basic') {
-        const parsedAlpha = Number.parseFloat(basicAlpha);
-        if (Number.isFinite(parsedAlpha)) {
-          sanitizedAlpha = Math.min(MAX_CONCAVE_ALPHA, Math.max(MIN_CONCAVE_ALPHA, parsedAlpha));
-        }
-        if (sanitizedAlpha.toString() !== basicAlpha) {
-          setBasicAlpha(sanitizedAlpha.toString());
+        const trimmedAlpha = basicAlpha.trim();
+        if (trimmedAlpha.length > 0) {
+          const parsedAlpha = Number.parseFloat(trimmedAlpha);
+          if (Number.isFinite(parsedAlpha)) {
+            sanitizedAlpha = Math.min(MAX_CONCAVE_ALPHA, Math.max(MIN_CONCAVE_ALPHA, parsedAlpha));
+            if (sanitizedAlpha.toString() !== trimmedAlpha) {
+              setBasicAlpha(sanitizedAlpha.toString());
+            }
+          } else {
+            setBasicAlpha('');
+          }
         }
       }
 
@@ -620,9 +630,10 @@ export function GrazingMapsView() {
                         onBlur={handleBasicAlphaBlur}
                         className="w-32 text-xs"
                         aria-label="Concave hull alpha"
+                        placeholder="Auto"
                       />
                       <span className="text-[11px] text-muted-foreground">
-                        Smaller = tighter hull, larger = smoother (range {MIN_CONCAVE_ALPHA}–{MAX_CONCAVE_ALPHA}).
+                        Leave blank for auto. Smaller = tighter hull, larger = smoother (range {MIN_CONCAVE_ALPHA}–{MAX_CONCAVE_ALPHA}).
                       </span>
                     </div>
                   </div>
@@ -766,7 +777,11 @@ export function GrazingMapsView() {
                       </div>
                       <div className="flex items-center justify-between text-muted-foreground">
                         <span>Alpha parameter</span>
-                        <span>{basicAlpha}</span>
+                        <span>
+                          {typeof summary.concaveAlpha === 'number'
+                            ? summary.concaveAlpha.toPrecision(4)
+                            : 'auto'}
+                        </span>
                       </div>
                     </div>
                   )}

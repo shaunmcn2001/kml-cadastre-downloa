@@ -244,6 +244,7 @@ export interface GrazingSummary {
   pointCount: number;
   bufferAreaHa: number;
   convexAreaHa: number;
+  concaveAlpha?: number;
   ringClasses?: GrazingRingSummary[];
 }
 
