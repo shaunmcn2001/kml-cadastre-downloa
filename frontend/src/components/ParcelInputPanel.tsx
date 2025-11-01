@@ -42,7 +42,6 @@ export function ParcelInputPanel({ onQueryParcels, isQuerying, onClearResults }:
 
   const exampleTexts = {
     NSW: `1//DP131118
-2//DP131118
 LOT 13 DP1242624
 1-3//DP555123
 10/4/DP203489

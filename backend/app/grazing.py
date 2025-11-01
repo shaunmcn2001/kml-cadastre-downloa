@@ -12,7 +12,7 @@ from sklearn.neighbors import NearestNeighbors
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastkml import kml as fastkml  # type: ignore[import-untyped]
 from pydantic import BaseModel
-from shapely.geometry import GeometryCollection, MultiPolygon, Point, Polygon, mapping, shape
+from shapely.geometry import GeometryCollection, LineString, MultiPolygon, Point, Polygon, mapping, shape
 from shapely.ops import transform, unary_union
 from simplekml import Kml
 from pyproj import Geod, Transformer
@@ -27,12 +27,10 @@ ADVANCED_WEIGHTS = [1.0, 0.75, 0.5]
 
 DEFAULT_BASIC_COLOR = "#5EC68F"
 DEFAULT_RING_COLORS = ["#5EC68F", "#4FA679", "#FCEE9C"]
-DEFAULT_CONCAVE_ALPHA = 0.0005
-MIN_CONCAVE_ALPHA = 0.000001
-MAX_CONCAVE_ALPHA = 0.05
-ALPHA_MIN = 0.00005
+ALPHA_MIN = 0.0001
 ALPHA_MAX = 0.005
 HULL_JOIN_DISTANCE_METERS = 6000.0
+PERIMETER_SAMPLE_STEP = 200.0  # metres
 
 FILL_OPACITY = 0.4
 OUTLINE_WIDTH = 4.0
@@ -347,6 +345,20 @@ def _calculate_area_ha(geom) -> float:
     return area_m2 / 10_000.0
 
 
+def _sample_perimeter_points(poly: Polygon, step: float = PERIMETER_SAMPLE_STEP) -> np.ndarray:
+    line = LineString(poly.exterior.coords)
+    if line.length == 0:
+        return np.asarray(poly.exterior.coords)
+
+    num_samples = max(int(line.length / step), 1)
+    distances = np.linspace(0, line.length, num_samples, endpoint=False)
+    sampled = [line.interpolate(distance).coords[0] for distance in distances]
+    coords = np.asarray(poly.exterior.coords)
+    if sampled:
+        coords = np.vstack([coords, np.asarray(sampled)])
+    return coords
+
+
 def _polygon_parts(geom: Polygon | MultiPolygon) -> List[List[Tuple[float, float]]]:
     if isinstance(geom, Polygon):
         parts = [list(geom.exterior.coords)]
@@ -424,24 +436,34 @@ def _create_kmz(kml_bytes: bytes) -> bytes:
     return output.getvalue()
 
 
-def _compute_concave_hull(polygons: MultiPolygon, alpha: float, join_distance: float = HULL_JOIN_DISTANCE_METERS) -> Polygon:
-    merged = unary_union(polygons)
+def _compute_concave_hull(
+    buffers: Sequence[Polygon],
+    alpha: float,
+    join_distance: float = HULL_JOIN_DISTANCE_METERS,
+    perimeter_step: float = PERIMETER_SAMPLE_STEP,
+) -> Polygon:
+    if not buffers:
+        raise HTTPException(status_code=400, detail="No buffer geometries available")
+
+    merged = unary_union(buffers)
     base_polygons = _extract_polygons_from_geom(merged)
     if not base_polygons:
         raise HTTPException(status_code=400, detail="Unable to build base geometry for concave hull")
 
-    boundary_points = [np.asarray(poly.exterior.coords) for poly in base_polygons if not poly.is_empty]
-    if not boundary_points:
-        raise HTTPException(status_code=400, detail="Unable to collect boundary coordinates for concave hull")
+    perimeter_arrays: List[np.ndarray] = []
+    for buffer_poly in buffers:
+        perimeter_arrays.append(_sample_perimeter_points(buffer_poly, perimeter_step))
 
-    all_points = np.concatenate(boundary_points, axis=0)
+    all_points = np.vstack(perimeter_arrays)
     unique_points = np.unique(all_points, axis=0)
     if unique_points.shape[0] < 4:
         fallback = merged if isinstance(merged, Polygon) else merged.convex_hull
         return fallback.buffer(0)
 
+    perimeter_points = [Point(xy) for xy in unique_points]
+
     try:
-        hull_geom = alphashape.alphashape(unique_points, alpha)
+        hull_geom = alphashape.alphashape(perimeter_points, alpha)
     except Exception as exc:
         logger.warning("alphashape failed, using convex hull fallback", extra={"error": str(exc)})
         hull_geom = merged.convex_hull
@@ -464,21 +486,27 @@ def _compute_concave_hull(polygons: MultiPolygon, alpha: float, join_distance: f
             hull_polygons = [max(hull_polygons, key=lambda p: p.area)]
 
     combined = unary_union([polygon.buffer(0) for polygon in hull_polygons])
-    if isinstance(combined, Polygon):
-        return combined
     if isinstance(combined, MultiPolygon):
-        merged_combined = combined.buffer(0)
-        if isinstance(merged_combined, Polygon):
-            return merged_combined
-        return merged_combined.convex_hull
+        combined = combined.buffer(0)
+        if isinstance(combined, MultiPolygon):
+            combined = combined.convex_hull
 
-    return combined.convex_hull
+    developed = combined if isinstance(combined, Polygon) else combined.convex_hull
+
+    for buffer_poly in buffers:
+        if not developed.contains(buffer_poly):
+            developed = developed.union(buffer_poly).buffer(0)
+
+    if isinstance(developed, MultiPolygon):
+        developed = max(developed.geoms, key=lambda g: g.area).buffer(0)
+
+    return developed
 
 
 def _create_basic_shapefile_zip(
-    buffers: MultiPolygon,
+    buffers: Sequence[Polygon],
     hull: Polygon | MultiPolygon,
-    buffer_areas: List[float],
+    buffer_areas: Sequence[float],
     hull_area: float,
     base_slug: str,
     buffer_color: str,
@@ -490,7 +518,7 @@ def _create_basic_shapefile_zip(
         writer.field("AREA_HA", "F", decimal=2)
         writer.field("COLOR_HEX", "C", size=16)
 
-        for idx, (poly, area) in enumerate(zip(buffers.geoms, buffer_areas), start=1):
+        for idx, (poly, area) in enumerate(zip(buffers, buffer_areas), start=1):
             writer.poly(_polygon_parts(poly))
             writer.record(f"BUFFER_{idx}", round(area, 2), buffer_color)
 
@@ -672,20 +700,14 @@ def _run_basic_method(
     projected_buffers = [point.buffer(BUFFER_DISTANCE_METERS) for point in projected_points]
     buffer_union_metric = _ensure_multipolygon(unary_union(projected_buffers))
 
-    clipped_buffers = buffer_union_metric.intersection(boundary_metric)
-    if clipped_buffers.is_empty:
-        raise HTTPException(status_code=400, detail="Buffer results lie outside the supplied boundary")
-    buffer_union_metric = _ensure_multipolygon(clipped_buffers)
-
     buffer_centroids = np.array([[poly.centroid.x, poly.centroid.y] for poly in projected_buffers], dtype=float)
 
     tightness = 100.0 if tightness_percent is None else max(0.0, min(100.0, tightness_percent))
-    tightness_factor = max(tightness, 1.0) / 100.0
+    effective_percent = max(tightness, 1.0)
 
     if buffer_centroids.shape[0] > 1:
         try:
-            nbrs = NearestNeighbors(n_neighbors=2)
-            nbrs.fit(buffer_centroids)
+            nbrs = NearestNeighbors(n_neighbors=2).fit(buffer_centroids)
             distances, _ = nbrs.kneighbors(buffer_centroids)
             nearest = distances[:, 1]
             nearest = nearest[nearest > 0]
@@ -696,35 +718,41 @@ def _run_basic_method(
     else:
         mean_dist = BUFFER_DISTANCE_METERS * 2
 
-    base_alpha = 1.0 / max(mean_dist * tightness_factor, 1e-6)
-    used_alpha = float(np.clip(base_alpha, ALPHA_MIN, ALPHA_MAX))
-    tightness = tightness
+    base_alpha = 1.0 / max(mean_dist * 0.7, 1e-6)
+    alpha_scale = effective_percent / 100.0
+    used_alpha = float(np.clip(base_alpha / alpha_scale, ALPHA_MIN, ALPHA_MAX))
 
-    concave_metric = _compute_concave_hull(buffer_union_metric, used_alpha, HULL_JOIN_DISTANCE_METERS)
+    concave_metric = _compute_concave_hull(projected_buffers, used_alpha, HULL_JOIN_DISTANCE_METERS)
     concave_clipped = concave_metric.intersection(boundary_metric)
     if concave_clipped.is_empty:
         concave_clipped = concave_metric
 
-    buffer_geodetic = _ensure_multipolygon(_project_geometry(buffer_union_metric, forward=False).intersection(boundary_wgs))
-    concave_geodetic = _project_geometry(concave_clipped, forward=False).intersection(boundary_wgs)
-    if concave_geodetic.is_empty:
-        concave_geodetic = _project_geometry(concave_metric, forward=False).intersection(boundary_wgs)
-    if concave_geodetic.is_empty:
-        concave_geodetic = buffer_geodetic.buffer(0)
+    buffer_geodetic_polys = [_project_geometry(poly, forward=False).buffer(0) for poly in projected_buffers]
+    concave_geodetic = _project_geometry(concave_clipped, forward=False)
 
-    buffer_areas = [_calculate_area_ha(poly) for poly in buffer_geodetic.geoms]
-    concave_area = _calculate_area_ha(concave_geodetic)
-
-    buffers_fc = _feature_collection_from_polygons(
-        buffer_geodetic.geoms,
-        "buffer",
-        color=buffer_color,
-        outline_color=OUTLINE_COLOR,
-        outline_width=OUTLINE_WIDTH,
-    )
+    buffer_areas = [_calculate_area_ha(poly) for poly in buffer_geodetic_polys]
     concave_geom_final = concave_geodetic.buffer(0)
     if isinstance(concave_geom_final, MultiPolygon):
         concave_geom_final = max(concave_geom_final.geoms, key=lambda g: g.area).buffer(0)
+    concave_area = _calculate_area_ha(concave_geom_final)
+
+    buffer_features: List[GrazingFeature] = []
+    for idx, (poly, area) in enumerate(zip(buffer_geodetic_polys, buffer_areas), start=1):
+        buffer_features.append(
+            GrazingFeature(
+                type="Feature",
+                geometry=poly.__geo_interface__,
+                properties={
+                    "type": "buffer",
+                    "name": f"Buffer {idx}",
+                    "area_ha": round(area, 3),
+                    "fill_color": buffer_color,
+                    "stroke_color": OUTLINE_COLOR,
+                    "stroke_width": OUTLINE_WIDTH,
+                },
+            )
+        )
+    buffers_fc = GrazingFeatureCollection(features=buffer_features)
     concave_fc = GrazingFeatureCollection(
         features=[
             GrazingFeature(
@@ -744,11 +772,16 @@ def _run_basic_method(
 
     concave_merged = concave_geom_final
 
-    kml_bytes = _create_basic_kml(buffer_geodetic, concave_merged, buffer_color)
+    if len(buffer_geodetic_polys) == 1:
+        buffers_for_export = MultiPolygon([buffer_geodetic_polys[0]])
+    else:
+        buffers_for_export = MultiPolygon(buffer_geodetic_polys)
+
+    kml_bytes = _create_basic_kml(buffers_for_export, concave_merged, buffer_color)
     kmz_bytes = _create_kmz(kml_bytes)
     shapefile_slug = _build_base_slug(base_name, "grazing-basic")
     shp_bytes = _create_basic_shapefile_zip(
-        buffer_geodetic,
+        buffer_geodetic_polys,
         concave_merged,
         buffer_areas,
         concave_area,
