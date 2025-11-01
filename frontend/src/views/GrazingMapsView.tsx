@@ -15,6 +15,7 @@ import { CloudArrowUp, DownloadSimple, FileWarning, MapPin, TextAa, UploadSimple
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Slider } from '@/components/ui/slider';
 import { formatFolderName } from '@/lib/formatters';
 
 type DownloadKey = keyof GrazingProcessResponse['downloads'];
@@ -67,7 +68,7 @@ export function GrazingMapsView() {
   const [ringColors, setRingColors] = useState<string[]>(() => [...DEFAULT_RING_COLORS]);
   const [basicHexInput, setBasicHexInput] = useState<string>(DEFAULT_BASIC_COLOR);
   const [ringHexInputs, setRingHexInputs] = useState<string[]>(() => [...DEFAULT_RING_COLORS]);
-  const [basicTightness, setBasicTightness] = useState<string>('');
+  const [basicTightness, setBasicTightness] = useState<number>(DEFAULT_TIGHTNESS_PERCENT);
   const [buffers, setBuffers] = useState<GrazingFeatureCollection | null>(null);
   const [convex, setConvex] = useState<GrazingFeatureCollection | null>(null);
   const [rings, setRings] = useState<GrazingFeatureCollection | null>(null);
@@ -76,6 +77,7 @@ export function GrazingMapsView() {
   const [downloads, setDownloads] = useState<GrazingProcessResponse['downloads'] | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [layerVersion, setLayerVersion] = useState(0);
   const mapRef = useRef<L.Map | null>(null);
 
   const handleMapRef = useCallback((instance: L.Map | null) => {
@@ -204,24 +206,14 @@ export function GrazingMapsView() {
     setBasicHexInput(DEFAULT_BASIC_COLOR);
   }, []);
 
-  const handleBasicTightnessChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    setBasicTightness(event.target.value);
+  const handleBasicTightnessChange = useCallback((value: number[]) => {
+    if (!value || value.length === 0) {
+      setBasicTightness(DEFAULT_TIGHTNESS_PERCENT);
+      return;
+    }
+    const clamped = Math.min(MAX_TIGHTNESS_PERCENT, Math.max(MIN_TIGHTNESS_PERCENT, value[0] ?? DEFAULT_TIGHTNESS_PERCENT));
+    setBasicTightness(clamped);
   }, []);
-
-  const handleBasicTightnessBlur = useCallback(() => {
-    const trimmed = basicTightness.trim();
-    if (trimmed.length === 0) {
-      setBasicTightness('');
-      return;
-    }
-    const numeric = Number.parseFloat(trimmed);
-    if (!Number.isFinite(numeric)) {
-      setBasicTightness('');
-      return;
-    }
-    const clamped = Math.min(MAX_TIGHTNESS_PERCENT, Math.max(MIN_TIGHTNESS_PERCENT, numeric));
-    setBasicTightness(clamped.toString());
-  }, [basicTightness]);
 
   const handleRingColorPickerChange = useCallback((index: number, value: string) => {
     const fallback = DEFAULT_RING_COLORS[Math.min(index, DEFAULT_RING_COLORS.length - 1)];
@@ -342,21 +334,9 @@ export function GrazingMapsView() {
         setRingColors(sanitizedRingColors);
       }
 
-      let sanitizedTightness: number | undefined;
-      if (method === 'basic') {
-        const trimmed = basicTightness.trim();
-        if (trimmed.length > 0) {
-          const parsed = Number.parseFloat(trimmed);
-          if (Number.isFinite(parsed)) {
-            sanitizedTightness = Math.min(MAX_TIGHTNESS_PERCENT, Math.max(MIN_TIGHTNESS_PERCENT, parsed));
-            if (sanitizedTightness.toString() !== trimmed) {
-              setBasicTightness(sanitizedTightness.toString());
-            }
-          } else {
-            setBasicTightness('');
-          }
-        }
-      }
+      const sanitizedTightness = method === 'basic'
+        ? Math.round(Math.min(MAX_TIGHTNESS_PERCENT, Math.max(MIN_TIGHTNESS_PERCENT, basicTightness)))
+        : undefined;
 
       const trimmedFolder = folderName.trim();
 
@@ -365,10 +345,20 @@ export function GrazingMapsView() {
         folderName: trimmedFolder ? trimmedFolder : undefined,
         colorBasic: sanitizedBasicColor,
         colorRings: sanitizedRingColors,
-        tightnessPercent: method === 'basic' ? sanitizedTightness : undefined,
+        tightnessPercent: sanitizedTightness,
       });
       setSummary(result.summary);
       setDownloads(result.downloads);
+
+      if (result.summary.concaveTightness !== undefined) {
+        const tightened = Math.round(Math.min(
+          MAX_TIGHTNESS_PERCENT,
+          Math.max(MIN_TIGHTNESS_PERCENT, result.summary.concaveTightness),
+        ));
+        setBasicTightness(tightened);
+      }
+
+      setLayerVersion((prev) => prev + 1);
 
       if (result.method === 'basic') {
         setBuffers(result.buffers ?? null);
@@ -446,10 +436,10 @@ export function GrazingMapsView() {
             ref={handleMapRef}
           >
             <TileLayer url={basemapUrl} attribution={basemapAttribution} />
-            {buffers && <GeoJSON key="buffers" data={buffers as any} style={featureStyle as any} />}
-            {convex && <GeoJSON key="convex" data={convex as any} style={featureStyle as any} />}
-            {rings && <GeoJSON key="rings" data={rings as any} style={featureStyle as any} />}
-            {ringHulls && <GeoJSON key="ring-hulls" data={ringHulls as any} style={featureStyle as any} />}
+            {buffers && <GeoJSON key={`buffers-${layerVersion}`} data={buffers as any} style={featureStyle as any} />}
+            {convex && <GeoJSON key={`convex-${layerVersion}`} data={convex as any} style={featureStyle as any} />}
+            {rings && <GeoJSON key={`rings-${layerVersion}`} data={rings as any} style={featureStyle as any} />}
+            {ringHulls && <GeoJSON key={`ring-hulls-${layerVersion}`} data={ringHulls as any} style={featureStyle as any} />}
           </MapContainer>
 
           {!hasResults && (
@@ -615,26 +605,37 @@ export function GrazingMapsView() {
                       Used for the 3 km buffers and concave hull. Fill opacity is fixed at 40% with a 4 px black outline.
                     </p>
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                      Hull Tightness (%)
-                    </Label>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Input
-                        type="number"
-                        step={1}
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        Hull Tightness (%)
+                      </Label>
+                      <div className="space-y-2">
+                      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                        <span>Looser</span>
+                        <span className="font-medium text-foreground">{Math.round(basicTightness)}%</span>
+                        <span>Tighter</span>
+                      </div>
+                      <Slider
                         min={MIN_TIGHTNESS_PERCENT}
                         max={MAX_TIGHTNESS_PERCENT}
-                        value={basicTightness}
-                        onChange={handleBasicTightnessChange}
-                        onBlur={handleBasicTightnessBlur}
-                        className="w-32 text-xs"
+                        step={1}
+                        value={[basicTightness]}
+                        onValueChange={handleBasicTightnessChange}
                         aria-label="Concave hull tightness percentage"
-                        placeholder={`${DEFAULT_TIGHTNESS_PERCENT}`}
                       />
-                      <span className="text-[11px] text-muted-foreground">
-                        Leave blank for auto (≈{DEFAULT_TIGHTNESS_PERCENT}%). Lower values loosen the hull; 100% keeps it as tight as possible.
-                      </span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="px-2 py-0 h-7"
+                        onClick={() => setBasicTightness(DEFAULT_TIGHTNESS_PERCENT)}
+                        disabled={Math.round(basicTightness) === DEFAULT_TIGHTNESS_PERCENT}
+                      >
+                        Reset to 100%
+                      </Button>
+                      <p className="text-[11px] text-muted-foreground">
+                        100% keeps the hull tight around the buffers. Reduce the percentage to smooth and loosen the developed area. Auto defaults to 100%.
+                      </p>
                     </div>
                   </div>
                 </div>

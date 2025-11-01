@@ -1,5 +1,6 @@
 import base64
 import io
+import logging
 import os
 import tempfile
 import zipfile
@@ -37,6 +38,8 @@ ELLIPSOID = "GRS80"
 GEOD = Geod(ellps=ELLIPSOID)
 TO_METRIC = Transformer.from_crs("EPSG:4326", "EPSG:7855", always_xy=True)
 TO_GEODETIC = Transformer.from_crs("EPSG:7855", "EPSG:4326", always_xy=True)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -759,6 +762,15 @@ def _run_basic_method(
         convexAreaHa=round(concave_area, 3),
         concaveAlpha=round(used_alpha, 6),
         concaveTightness=round(tightness, 2),
+    )
+
+    logger.info(
+        "Grazing basic run resolved alpha",
+        extra={
+            "tightness_percent": summary.concaveTightness,
+            "alpha_value": summary.concaveAlpha,
+            "point_count": len(points),
+        },
     )
 
     return GrazingProcessResponse(
