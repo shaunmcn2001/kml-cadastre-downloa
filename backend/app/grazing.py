@@ -188,7 +188,7 @@ def _create_kml(buffers: MultiPolygon, convex: Polygon) -> bytes:
     hull.outerboundaryis.coords = list(convex.exterior.coords)
     for interior in convex.interiors:
         hull.innerboundaryis.append(list(interior.coords))
-    return doc.kml()
+    return doc.kml().encode("utf-8")
 
 
 def _polygon_parts(poly: Polygon) -> List[List[Tuple[float, float]]]:
