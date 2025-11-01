@@ -15,3 +15,4 @@ cachetools==5.5.0
 python-multipart==0.0.12
 pyshp==2.3.1
 fastkml==0.12
+setuptools==75.8.0
