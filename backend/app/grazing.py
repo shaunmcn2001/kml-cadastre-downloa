@@ -8,6 +8,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import alphashape
 import numpy as np
+from sklearn.neighbors import NearestNeighbors
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastkml import kml as fastkml  # type: ignore[import-untyped]
 from pydantic import BaseModel
@@ -29,6 +30,9 @@ DEFAULT_RING_COLORS = ["#5EC68F", "#4FA679", "#FCEE9C"]
 DEFAULT_CONCAVE_ALPHA = 0.0005
 MIN_CONCAVE_ALPHA = 0.000001
 MAX_CONCAVE_ALPHA = 0.05
+ALPHA_MIN = 0.00005
+ALPHA_MAX = 0.005
+HULL_JOIN_DISTANCE_METERS = 6000.0
 
 FILL_OPACITY = 0.4
 OUTLINE_WIDTH = 4.0
@@ -420,22 +424,18 @@ def _create_kmz(kml_bytes: bytes) -> bytes:
     return output.getvalue()
 
 
-def _compute_concave_hull(polygons: MultiPolygon, alpha: float) -> Polygon:
+def _compute_concave_hull(polygons: MultiPolygon, alpha: float, join_distance: float = HULL_JOIN_DISTANCE_METERS) -> Polygon:
     merged = unary_union(polygons)
     base_polygons = _extract_polygons_from_geom(merged)
     if not base_polygons:
         raise HTTPException(status_code=400, detail="Unable to build base geometry for concave hull")
 
-    boundary_points: List[np.ndarray] = []
-    for poly in base_polygons:
-        boundary_points.append(np.asarray(poly.exterior.coords))
-
+    boundary_points = [np.asarray(poly.exterior.coords) for poly in base_polygons if not poly.is_empty]
     if not boundary_points:
         raise HTTPException(status_code=400, detail="Unable to collect boundary coordinates for concave hull")
 
     all_points = np.concatenate(boundary_points, axis=0)
     unique_points = np.unique(all_points, axis=0)
-
     if unique_points.shape[0] < 4:
         fallback = merged if isinstance(merged, Polygon) else merged.convex_hull
         return fallback.buffer(0)
@@ -450,60 +450,34 @@ def _compute_concave_hull(polygons: MultiPolygon, alpha: float) -> Polygon:
     if not hull_polygons:
         hull_polygons = base_polygons
 
+    if len(hull_polygons) > 1:
+        filtered: List[Polygon] = []
+        for poly in hull_polygons:
+            distances = [poly.distance(other) for other in hull_polygons if other is not poly]
+            min_distance = min(distances) if distances else float("inf")
+            if min_distance < join_distance:
+                filtered.append(poly)
+
+        if filtered:
+            hull_polygons = filtered
+        else:
+            hull_polygons = [max(hull_polygons, key=lambda p: p.area)]
+
     combined = unary_union([polygon.buffer(0) for polygon in hull_polygons])
     if isinstance(combined, Polygon):
         return combined
     if isinstance(combined, MultiPolygon):
-        combined = combined.buffer(0)
-        if isinstance(combined, Polygon):
-            return combined
-        return combined.convex_hull
+        merged_combined = combined.buffer(0)
+        if isinstance(merged_combined, Polygon):
+            return merged_combined
+        return merged_combined.convex_hull
 
     return combined.convex_hull
 
 
-def _auto_alpha(projected_points: Sequence[Point]) -> float:
-    coords = [(float(pt.x), float(pt.y)) for pt in projected_points if isinstance(pt, Point)]
-    if len(coords) < 2:
-        return DEFAULT_CONCAVE_ALPHA
-
-    distances: List[float] = []
-    for idx, (x1, y1) in enumerate(coords):
-        min_dist = None
-        for jdx, (x2, y2) in enumerate(coords):
-            if idx == jdx:
-                continue
-            dist = float(np.hypot(x2 - x1, y2 - y1))
-            if dist <= 0:
-                continue
-            if min_dist is None or dist < min_dist:
-                min_dist = dist
-        if min_dist is not None:
-            distances.append(min_dist)
-
-    if not distances:
-        return DEFAULT_CONCAVE_ALPHA
-
-    mean_dist = float(np.mean(distances))
-    if mean_dist <= 0:
-        return DEFAULT_CONCAVE_ALPHA
-
-    alpha = 1.0 / max(mean_dist * 0.8, MIN_CONCAVE_ALPHA)
-    return max(MIN_CONCAVE_ALPHA, min(MAX_CONCAVE_ALPHA, alpha))
-
-
-def _percent_to_alpha(percent: float, auto_alpha: float) -> float:
-    clamped = max(0.0, min(100.0, percent))
-    base_alpha = auto_alpha if auto_alpha > 0 else DEFAULT_CONCAVE_ALPHA
-    # tightest (100%) => base alpha, loosest (0%) => up to 5x base alpha
-    loosen_factor = 1.0 + (1.0 - clamped / 100.0) * 4.0
-    candidate = base_alpha * loosen_factor
-    return max(MIN_CONCAVE_ALPHA, min(MAX_CONCAVE_ALPHA, candidate))
-
-
 def _create_basic_shapefile_zip(
     buffers: MultiPolygon,
-    hull: Polygon,
+    hull: Polygon | MultiPolygon,
     buffer_areas: List[float],
     hull_area: float,
     base_slug: str,
@@ -703,15 +677,30 @@ def _run_basic_method(
         raise HTTPException(status_code=400, detail="Buffer results lie outside the supplied boundary")
     buffer_union_metric = _ensure_multipolygon(clipped_buffers)
 
-    auto_alpha = _auto_alpha(projected_points)
-    if tightness_percent is not None:
-        tightness = max(0.0, min(100.0, tightness_percent))
-        used_alpha = _percent_to_alpha(tightness, auto_alpha)
-    else:
-        tightness = 100.0
-        used_alpha = auto_alpha
+    buffer_centroids = np.array([[poly.centroid.x, poly.centroid.y] for poly in projected_buffers], dtype=float)
 
-    concave_metric = _compute_concave_hull(buffer_union_metric, used_alpha)
+    tightness = 100.0 if tightness_percent is None else max(0.0, min(100.0, tightness_percent))
+    tightness_factor = max(tightness, 1.0) / 100.0
+
+    if buffer_centroids.shape[0] > 1:
+        try:
+            nbrs = NearestNeighbors(n_neighbors=2)
+            nbrs.fit(buffer_centroids)
+            distances, _ = nbrs.kneighbors(buffer_centroids)
+            nearest = distances[:, 1]
+            nearest = nearest[nearest > 0]
+            mean_dist = float(np.mean(nearest)) if nearest.size else BUFFER_DISTANCE_METERS * 2
+        except Exception as exc:
+            logger.warning("Failed to compute nearest neighbour distances", extra={"error": str(exc)})
+            mean_dist = BUFFER_DISTANCE_METERS * 2
+    else:
+        mean_dist = BUFFER_DISTANCE_METERS * 2
+
+    base_alpha = 1.0 / max(mean_dist * tightness_factor, 1e-6)
+    used_alpha = float(np.clip(base_alpha, ALPHA_MIN, ALPHA_MAX))
+    tightness = tightness
+
+    concave_metric = _compute_concave_hull(buffer_union_metric, used_alpha, HULL_JOIN_DISTANCE_METERS)
     concave_clipped = concave_metric.intersection(boundary_metric)
     if concave_clipped.is_empty:
         concave_clipped = concave_metric
@@ -734,6 +723,8 @@ def _run_basic_method(
         outline_width=OUTLINE_WIDTH,
     )
     concave_geom_final = concave_geodetic.buffer(0)
+    if isinstance(concave_geom_final, MultiPolygon):
+        concave_geom_final = max(concave_geom_final.geoms, key=lambda g: g.area).buffer(0)
     concave_fc = GrazingFeatureCollection(
         features=[
             GrazingFeature(
@@ -800,6 +791,7 @@ def _run_basic_method(
         extra={
             "tightness_percent": summary.concaveTightness,
             "alpha_value": summary.concaveAlpha,
+            "mean_distance": round(mean_dist, 2),
             "point_count": len(points),
         },
     )
