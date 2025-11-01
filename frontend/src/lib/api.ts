@@ -275,6 +275,7 @@ class ApiClient {
       folderName?: string;
       colorBasic?: string;
       colorRings?: string[];
+      alphaBasic?: number;
     },
   ): Promise<GrazingProcessResponse> {
     const formData = new FormData();
@@ -288,6 +289,9 @@ class ApiClient {
     }
     if (method === 'basic') {
       formData.append('colorBasic', options.colorBasic || '');
+      if (typeof options.alphaBasic === 'number') {
+        formData.append('alphaBasic', String(options.alphaBasic));
+      }
     } else {
       const colors = options.colorRings ?? [];
       colors.forEach((value, index) => {

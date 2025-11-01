@@ -5,6 +5,7 @@ import tempfile
 import zipfile
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
+import alphashape
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastkml import kml as fastkml  # type: ignore[import-untyped]
 from pydantic import BaseModel
@@ -17,13 +18,15 @@ import shapefile  # type: ignore[import-untyped]
 from .settings import sanitize_export_filename
 
 BUFFER_DISTANCE_METERS = 3000
-SMOOTH_DISTANCE_METERS = 500
 
 ADVANCED_BREAKS_KM = [0.5, 1.5, 3.0]
 ADVANCED_WEIGHTS = [1.0, 0.75, 0.5]
 
 DEFAULT_BASIC_COLOR = "#5EC68F"
-DEFAULT_RING_COLORS = ["#5EC68F", "#4FA679", "#FCEE9C"]
+DEFAULT_RING_COLORS = [ "#4FA679","#5EC68F", "#FCEE9C"]
+DEFAULT_CONCAVE_ALPHA = 0.0005
+MIN_CONCAVE_ALPHA = 0.000001
+MAX_CONCAVE_ALPHA = 0.05
 
 FILL_OPACITY = 0.4
 OUTLINE_WIDTH = 4.0
@@ -362,7 +365,7 @@ def _build_base_slug(base_name: Optional[str], default: str) -> str:
 
 def _create_basic_kml(
     buffers: MultiPolygon,
-    convex: Polygon,
+    hull_geom: Polygon | MultiPolygon,
     buffer_color: str,
 ) -> bytes:
     doc = Kml()
@@ -381,16 +384,21 @@ def _create_basic_kml(
         placemark.style.linestyle.color = outline_kml
         placemark.style.linestyle.width = OUTLINE_WIDTH
 
-    hull_folder = doc.newfolder(name="Smoothed Convex Hull")
-    hull = hull_folder.newpolygon(name="Smoothed Hull")
-    hull.outerboundaryis.coords = list(convex.exterior.coords)
-    for interior in convex.interiors:
-        hull.innerboundaryis.append(list(interior.coords))
-    hull.color = fill_kml
-    hull.style.polystyle.color = fill_kml
-    hull.style.polystyle.fill = 1
-    hull.style.linestyle.color = outline_kml
-    hull.style.linestyle.width = OUTLINE_WIDTH
+    hull_folder = doc.newfolder(name="Concave Hull")
+
+    hull_polys = _extract_polygons_from_geom(hull_geom)
+    if not hull_polys:
+        hull_polys = _extract_polygons_from_geom(_merge_polygons(buffers.geoms))
+
+    for idx, poly in enumerate(hull_polys, start=1):
+        placemark = hull_folder.newpolygon(name=f"Concave Hull {idx}")
+        placemark.outerboundaryis.coords = list(poly.exterior.coords)
+        for interior in poly.interiors:
+            placemark.innerboundaryis.append(list(interior.coords))
+        placemark.style.polystyle.color = fill_kml
+        placemark.style.polystyle.fill = 1
+        placemark.style.linestyle.color = outline_kml
+        placemark.style.linestyle.width = OUTLINE_WIDTH
 
     return doc.kml().encode("utf-8")
 
@@ -402,11 +410,34 @@ def _create_kmz(kml_bytes: bytes) -> bytes:
     return output.getvalue()
 
 
+def _compute_concave_hull(polygons: MultiPolygon, alpha: float) -> MultiPolygon:
+    coords: List[Tuple[float, float]] = []
+    for poly in polygons.geoms:
+        coords.extend(list(poly.exterior.coords))
+        for interior in poly.interiors:
+            coords.extend(list(interior.coords))
+
+    unique_coords = list(dict.fromkeys(coords))  # preserve order while removing duplicates
+    if len(unique_coords) < 4:
+        merged = unary_union(polygons)
+        return _ensure_multipolygon(merged if isinstance(merged, (Polygon, MultiPolygon)) else merged.convex_hull)
+
+    try:
+        hull_geom = alphashape.alphashape(unique_coords, alpha)
+    except Exception as exc:  # pragma: no cover - defensive
+        raise HTTPException(status_code=400, detail=f"Concave hull generation failed: {exc}") from exc
+    hull_polygons = _extract_polygons_from_geom(hull_geom)
+    if not hull_polygons:
+        merged = unary_union(polygons)
+        return _ensure_multipolygon(merged if isinstance(merged, (Polygon, MultiPolygon)) else merged.convex_hull)
+    return _merge_polygons(hull_polygons)
+
+
 def _create_basic_shapefile_zip(
     buffers: MultiPolygon,
-    convex: Polygon,
+    hull: Polygon,
     buffer_areas: List[float],
-    convex_area: float,
+    hull_area: float,
     base_slug: str,
     buffer_color: str,
 ) -> bytes:
@@ -421,8 +452,8 @@ def _create_basic_shapefile_zip(
             writer.poly(_polygon_parts(poly))
             writer.record(f"BUFFER_{idx}", round(area, 2), buffer_color)
 
-        writer.poly(_polygon_parts(convex))
-        writer.record("CONVEX", round(convex_area, 2), buffer_color)
+        writer.poly(_polygon_parts(hull))
+        writer.record("CONCAVE", round(hull_area, 2), buffer_color)
         writer.close()
 
         prj_path = f"{shp_path}.prj"
@@ -596,29 +627,24 @@ def _run_basic_method(
     projected_points: Sequence[Polygon],
     base_name: Optional[str],
     buffer_color: str,
+    concave_alpha: float,
 ) -> GrazingProcessResponse:
     projected_buffers = [point.buffer(BUFFER_DISTANCE_METERS) for point in projected_points]
     buffer_union_metric = _ensure_multipolygon(unary_union(projected_buffers))
-
-    convex_metric = unary_union(projected_buffers).convex_hull
-    smoothed_metric = convex_metric.buffer(SMOOTH_DISTANCE_METERS).buffer(-SMOOTH_DISTANCE_METERS)
-    if smoothed_metric.is_empty:
-        raise HTTPException(status_code=400, detail="Unable to create smoothed convex hull from the supplied points")
 
     clipped_buffers = buffer_union_metric.intersection(boundary_metric)
     if clipped_buffers.is_empty:
         raise HTTPException(status_code=400, detail="Buffer results lie outside the supplied boundary")
     buffer_union_metric = _ensure_multipolygon(clipped_buffers)
 
-    smoothed_metric = smoothed_metric.intersection(boundary_metric)
-    if smoothed_metric.is_empty:
-        raise HTTPException(status_code=400, detail="Convex hull lies outside the supplied boundary")
-
     buffer_geodetic = _ensure_multipolygon(_project_geometry(buffer_union_metric, forward=False).intersection(boundary_wgs))
-    smoothed_geodetic = _project_geometry(smoothed_metric, forward=False).intersection(boundary_wgs)
+    concave_geodetic = _compute_concave_hull(buffer_geodetic, concave_alpha)
+    concave_geodetic = _ensure_multipolygon(concave_geodetic.intersection(boundary_wgs))
+    if concave_geodetic.is_empty:
+        raise HTTPException(status_code=400, detail="Concave hull lies outside the supplied boundary")
 
     buffer_areas = [_calculate_area_ha(poly) for poly in buffer_geodetic.geoms]
-    convex_area = _calculate_area_ha(smoothed_geodetic)
+    concave_area = _calculate_area_ha(concave_geodetic)
 
     buffers_fc = _feature_collection_from_polygons(
         buffer_geodetic.geoms,
@@ -627,18 +653,27 @@ def _run_basic_method(
         outline_color=OUTLINE_COLOR,
         outline_width=OUTLINE_WIDTH,
     )
-    convex_fc = _feature_collection_from_polygons(
-        [smoothed_geodetic],
-        "convex",
+    concave_fc = _feature_collection_from_polygons(
+        concave_geodetic.geoms,
+        "concave",
         color=buffer_color,
         outline_color=OUTLINE_COLOR,
         outline_width=OUTLINE_WIDTH,
     )
 
-    kml_bytes = _create_basic_kml(buffer_geodetic, smoothed_geodetic, buffer_color)
+    concave_merged = _merge_polygons(concave_geodetic.geoms)
+
+    kml_bytes = _create_basic_kml(buffer_geodetic, concave_merged, buffer_color)
     kmz_bytes = _create_kmz(kml_bytes)
     shapefile_slug = _build_base_slug(base_name, "grazing-basic")
-    shp_bytes = _create_basic_shapefile_zip(buffer_geodetic, smoothed_geodetic, buffer_areas, convex_area, shapefile_slug, buffer_color)
+    shp_bytes = _create_basic_shapefile_zip(
+        buffer_geodetic,
+        concave_merged,
+        buffer_areas,
+        concave_area,
+        shapefile_slug,
+        buffer_color,
+    )
 
     kml_name = _build_filename(base_name, "grazing-basic", ".kml")
     kmz_name = _build_filename(base_name, "grazing-basic", ".kmz")
@@ -665,13 +700,13 @@ def _run_basic_method(
     summary = GrazingSummary(
         pointCount=len(points),
         bufferAreaHa=round(sum(buffer_areas), 3),
-        convexAreaHa=round(convex_area, 3),
+        convexAreaHa=round(concave_area, 3),
     )
 
     return GrazingProcessResponse(
         method="basic",
         buffers=buffers_fc,
-        convexHull=convex_fc,
+        convexHull=concave_fc,
         summary=summary,
         downloads=downloads,
     )
@@ -840,6 +875,7 @@ async def process_grazing_upload(
     colorRing0: Optional[str] = Form(None),
     colorRing1: Optional[str] = Form(None),
     colorRing2: Optional[str] = Form(None),
+    alphaBasic: Optional[float] = Form(None),
 ):
     method_normalized = method.strip().lower()
     if method_normalized not in {"basic", "advanced"}:
@@ -857,7 +893,19 @@ async def process_grazing_upload(
 
     if method_normalized == "basic":
         color = _normalize_hex(colorBasic or DEFAULT_BASIC_COLOR, DEFAULT_BASIC_COLOR)
-        return _run_basic_method(points, boundary_wgs, boundary_metric, projected_points, folderName, color)
+        alpha_value = alphaBasic if alphaBasic is not None else DEFAULT_CONCAVE_ALPHA
+        if alpha_value <= 0:
+            alpha_value = DEFAULT_CONCAVE_ALPHA
+        alpha_value = max(MIN_CONCAVE_ALPHA, min(MAX_CONCAVE_ALPHA, alpha_value))
+        return _run_basic_method(
+            points,
+            boundary_wgs,
+            boundary_metric,
+            projected_points,
+            folderName,
+            color,
+            alpha_value,
+        )
 
     ring_colors = [
         _normalize_hex(colorRing0 or DEFAULT_RING_COLORS[0], DEFAULT_RING_COLORS[0]),

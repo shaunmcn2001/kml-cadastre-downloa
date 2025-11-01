@@ -36,6 +36,9 @@ const downloadsMeta: DownloadItem[] = [
 
 const DEFAULT_BASIC_COLOR = '#5EC68F';
 const DEFAULT_RING_COLORS = ['#5EC68F', '#4FA679', '#FCEE9C'];
+const DEFAULT_CONCAVE_ALPHA = 0.0005;
+const MIN_CONCAVE_ALPHA = 0.000001;
+const MAX_CONCAVE_ALPHA = 0.05;
 const ADVANCED_RING_BREAKS = [0.5, 1.5, 3.0];
 const MAP_FILL_OPACITY = 0.4;
 const MAP_OUTLINE_COLOR = '#000000';
@@ -64,6 +67,7 @@ export function GrazingMapsView() {
   const [ringColors, setRingColors] = useState<string[]>(() => [...DEFAULT_RING_COLORS]);
   const [basicHexInput, setBasicHexInput] = useState<string>(DEFAULT_BASIC_COLOR);
   const [ringHexInputs, setRingHexInputs] = useState<string[]>(() => [...DEFAULT_RING_COLORS]);
+  const [basicAlpha, setBasicAlpha] = useState<string>(DEFAULT_CONCAVE_ALPHA.toString());
   const [buffers, setBuffers] = useState<GrazingFeatureCollection | null>(null);
   const [convex, setConvex] = useState<GrazingFeatureCollection | null>(null);
   const [rings, setRings] = useState<GrazingFeatureCollection | null>(null);
@@ -200,6 +204,20 @@ export function GrazingMapsView() {
     setBasicHexInput(DEFAULT_BASIC_COLOR);
   }, []);
 
+  const handleBasicAlphaChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setBasicAlpha(event.target.value);
+  }, []);
+
+  const handleBasicAlphaBlur = useCallback(() => {
+    const numeric = Number.parseFloat(basicAlpha);
+    if (!Number.isFinite(numeric)) {
+      setBasicAlpha(DEFAULT_CONCAVE_ALPHA.toString());
+      return;
+    }
+    const clamped = Math.min(MAX_CONCAVE_ALPHA, Math.max(MIN_CONCAVE_ALPHA, numeric));
+    setBasicAlpha(clamped.toString());
+  }, [basicAlpha]);
+
   const handleRingColorPickerChange = useCallback((index: number, value: string) => {
     const fallback = DEFAULT_RING_COLORS[Math.min(index, DEFAULT_RING_COLORS.length - 1)];
     const normalized = normalizeHex(value, fallback);
@@ -319,6 +337,17 @@ export function GrazingMapsView() {
         setRingColors(sanitizedRingColors);
       }
 
+      let sanitizedAlpha = DEFAULT_CONCAVE_ALPHA;
+      if (method === 'basic') {
+        const parsedAlpha = Number.parseFloat(basicAlpha);
+        if (Number.isFinite(parsedAlpha)) {
+          sanitizedAlpha = Math.min(MAX_CONCAVE_ALPHA, Math.max(MIN_CONCAVE_ALPHA, parsedAlpha));
+        }
+        if (sanitizedAlpha.toString() !== basicAlpha) {
+          setBasicAlpha(sanitizedAlpha.toString());
+        }
+      }
+
       const trimmedFolder = folderName.trim();
 
       const result = await apiClient.processGrazing(pointsFile, method, {
@@ -326,6 +355,7 @@ export function GrazingMapsView() {
         folderName: trimmedFolder ? trimmedFolder : undefined,
         colorBasic: sanitizedBasicColor,
         colorRings: sanitizedRingColors,
+        alphaBasic: method === 'basic' ? sanitizedAlpha : undefined,
       });
       setSummary(result.summary);
       setDownloads(result.downloads);
@@ -352,6 +382,7 @@ export function GrazingMapsView() {
       setIsProcessing(false);
     }
   }, [
+    basicAlpha,
     basicColor,
     basicHexInput,
     boundaryFile,
@@ -441,7 +472,7 @@ export function GrazingMapsView() {
               </div>
               <p className="text-[11px] text-muted-foreground">
                 {method === 'basic'
-                  ? 'Basic: buffers every trough by 3 km, applies a smoothed convex hull, and clips to the supplied boundary.'
+                  ? 'Basic: buffers every trough by 3 km, creates a concave alpha hull that honours holes, and clips to the supplied boundary.'
                   : 'Advanced: builds weighted rings at 0.5, 1.5, and 3 km from troughs, clipped to the supplied boundary.'}
               </p>
             </CardHeader>
@@ -539,39 +570,62 @@ export function GrazingMapsView() {
               </div>
 
               {method === 'basic' ? (
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                    Buffer Colour
-                  </Label>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <input
-                      type="color"
-                      value={basicColor}
-                      onChange={handleBasicColorPickerChange}
-                      className="h-10 w-16 cursor-pointer rounded border border-input bg-background p-1"
-                      aria-label="Choose buffer colour"
-                    />
-                    <Input
-                      value={basicHexInput}
-                      onChange={handleBasicHexInputChange}
-                      onBlur={handleBasicHexInputBlur}
-                      maxLength={7}
-                      className="w-28 font-mono text-xs uppercase"
-                      aria-label="Hex buffer colour"
-                    />
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={handleBasicColorReset}
-                      disabled={basicColorIsDefault}
-                    >
-                      Reset
-                    </Button>
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      Buffer Colour
+                    </Label>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <input
+                        type="color"
+                        value={basicColor}
+                        onChange={handleBasicColorPickerChange}
+                        className="h-10 w-16 cursor-pointer rounded border border-input bg-background p-1"
+                        aria-label="Choose buffer colour"
+                      />
+                      <Input
+                        value={basicHexInput}
+                        onChange={handleBasicHexInputChange}
+                        onBlur={handleBasicHexInputBlur}
+                        maxLength={7}
+                        className="w-28 font-mono text-xs uppercase"
+                        aria-label="Hex buffer colour"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleBasicColorReset}
+                        disabled={basicColorIsDefault}
+                      >
+                        Reset
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Used for the 3 km buffers and concave hull. Fill opacity is fixed at 40% with a 4 px black outline.
+                    </p>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Used for the 3 km buffers and smoothed convex hull. Fill opacity is fixed at 40% with a 4 px black outline.
-                  </p>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      Concave Hull Alpha
+                    </Label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Input
+                        type="number"
+                        step="0.0001"
+                        min={MIN_CONCAVE_ALPHA}
+                        max={MAX_CONCAVE_ALPHA}
+                        value={basicAlpha}
+                        onChange={handleBasicAlphaChange}
+                        onBlur={handleBasicAlphaBlur}
+                        className="w-32 text-xs"
+                        aria-label="Concave hull alpha"
+                      />
+                      <span className="text-[11px] text-muted-foreground">
+                        Smaller = tighter hull, larger = smoother (range {MIN_CONCAVE_ALPHA}–{MAX_CONCAVE_ALPHA}).
+                      </span>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -647,11 +701,10 @@ export function GrazingMapsView() {
                     <span>
                       Total polygon area: <strong>{summary.bufferAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</strong>
                     </span>
-                    {method === 'advanced' && (
-                      <span>
-                        Total hull area: <strong>{summary.convexAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</strong>
-                      </span>
-                    )}
+                    <span>
+                      {method === 'basic' ? 'Concave hull area:' : 'Total hull area:'}{' '}
+                      <strong>{summary.convexAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</strong>
+                    </span>
                   </div>
 
                   {method === 'advanced' && ringSummaryWithColors.length > 0 ? (
@@ -706,10 +759,14 @@ export function GrazingMapsView() {
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="font-medium text-foreground">Smoothed Convex Hull</span>
+                        <span className="font-medium text-foreground">Concave Hull</span>
                         <span className="text-muted-foreground">
                           {summary.convexAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha
                         </span>
+                      </div>
+                      <div className="flex items-center justify-between text-muted-foreground">
+                        <span>Alpha parameter</span>
+                        <span>{basicAlpha}</span>
                       </div>
                     </div>
                   )}
