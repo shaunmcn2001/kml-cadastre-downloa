@@ -267,12 +267,32 @@ class ApiClient {
     }
   }
 
-  async processGrazing(points: File, method: GrazingMethod, boundary?: File | null): Promise<GrazingProcessResponse> {
+  async processGrazing(
+    points: File,
+    method: GrazingMethod,
+    options: {
+      boundary: File;
+      folderName?: string;
+      colorBasic?: string;
+      colorRings?: string[];
+    },
+  ): Promise<GrazingProcessResponse> {
     const formData = new FormData();
     formData.append('file', points);
     formData.append('method', method);
-    if (boundary) {
-      formData.append('boundary', boundary);
+    if (options.boundary) {
+      formData.append('boundary', options.boundary);
+    }
+    if (options.folderName) {
+      formData.append('folderName', options.folderName);
+    }
+    if (method === 'basic') {
+      formData.append('colorBasic', options.colorBasic || '');
+    } else {
+      const colors = options.colorRings ?? [];
+      colors.forEach((value, index) => {
+        formData.append(`colorRing${index}`, value);
+      });
     }
     return this.makeRequest<GrazingProcessResponse>('POST', '/api/grazing/process', formData);
   }

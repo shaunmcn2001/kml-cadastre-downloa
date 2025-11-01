@@ -11,8 +11,11 @@ import { MapContainer, TileLayer, GeoJSON } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { cn } from '@/lib/utils';
-import { CloudArrowUp, DownloadSimple, FileWarning, MapPin, UploadSimple } from '@phosphor-icons/react';
+import { CloudArrowUp, DownloadSimple, FileWarning, MapPin, TextAa, UploadSimple } from '@phosphor-icons/react';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { formatFolderName } from '@/lib/formatters';
 
 type DownloadKey = keyof GrazingProcessResponse['downloads'];
 
@@ -31,10 +34,36 @@ const downloadsMeta: DownloadItem[] = [
   { key: 'shp', label: 'Download Shapefile', description: 'Zipped ESRI Shapefiles with areas' },
 ];
 
+const DEFAULT_BASIC_COLOR = '#5EC68F';
+const DEFAULT_RING_COLORS = ['#5EC68F', '#4FA679', '#FCEE9C'];
+const ADVANCED_RING_BREAKS = [0.5, 1.5, 3.0];
+const MAP_FILL_OPACITY = 0.4;
+const MAP_OUTLINE_COLOR = '#000000';
+const MAP_OUTLINE_WIDTH = 4;
+
+const HEX_VALUE_PATTERN = /^[0-9A-F]{6}$/;
+
+function normalizeHex(value: string | undefined | null, fallback: string): string {
+  if (!value) {
+    return fallback.toUpperCase();
+  }
+  const trimmed = value.trim().toUpperCase();
+  const candidate = trimmed.startsWith('#') ? trimmed.slice(1) : trimmed;
+  if (HEX_VALUE_PATTERN.test(candidate)) {
+    return `#${candidate}`;
+  }
+  return fallback.toUpperCase();
+}
+
 export function GrazingMapsView() {
   const [method, setMethod] = useState<GrazingMethod>('basic');
   const [pointsFile, setPointsFile] = useState<File | null>(null);
   const [boundaryFile, setBoundaryFile] = useState<File | null>(null);
+  const [folderName, setFolderName] = useState('');
+  const [basicColor, setBasicColor] = useState<string>(DEFAULT_BASIC_COLOR);
+  const [ringColors, setRingColors] = useState<string[]>(() => [...DEFAULT_RING_COLORS]);
+  const [basicHexInput, setBasicHexInput] = useState<string>(DEFAULT_BASIC_COLOR);
+  const [ringHexInputs, setRingHexInputs] = useState<string[]>(() => [...DEFAULT_RING_COLORS]);
   const [buffers, setBuffers] = useState<GrazingFeatureCollection | null>(null);
   const [convex, setConvex] = useState<GrazingFeatureCollection | null>(null);
   const [rings, setRings] = useState<GrazingFeatureCollection | null>(null);
@@ -126,6 +155,138 @@ export function GrazingMapsView() {
     }
   }, []);
 
+  const basicColorIsDefault = useMemo(() => basicColor === DEFAULT_BASIC_COLOR, [basicColor]);
+
+  const ringColorsAreDefault = useMemo(
+    () => ringColors.every((color, index) => color === DEFAULT_RING_COLORS[Math.min(index, DEFAULT_RING_COLORS.length - 1)]),
+    [ringColors],
+  );
+
+  const ringColorRows = useMemo(
+    () =>
+      ringHexInputs.map((hex, index) => {
+        const start = index === 0 ? 0 : ADVANCED_RING_BREAKS[index - 1] ?? ADVANCED_RING_BREAKS[0];
+        const end = ADVANCED_RING_BREAKS[index] ?? ADVANCED_RING_BREAKS[ADVANCED_RING_BREAKS.length - 1];
+        const label = `${start}\u2013${end} km`;
+        const fallback = DEFAULT_RING_COLORS[Math.min(index, DEFAULT_RING_COLORS.length - 1)];
+        return {
+          index,
+          label,
+          color: ringColors[index] ?? fallback,
+          hex,
+        };
+      }),
+    [ringColors, ringHexInputs],
+  );
+
+  const handleBasicColorPickerChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const normalized = normalizeHex(event.target.value, DEFAULT_BASIC_COLOR);
+    setBasicColor(normalized);
+    setBasicHexInput(normalized);
+  }, []);
+
+  const handleBasicHexInputChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setBasicHexInput(event.target.value.toUpperCase());
+  }, []);
+
+  const handleBasicHexInputBlur = useCallback(() => {
+    const normalized = normalizeHex(basicHexInput, DEFAULT_BASIC_COLOR);
+    setBasicHexInput(normalized);
+    setBasicColor(normalized);
+  }, [basicHexInput]);
+
+  const handleBasicColorReset = useCallback(() => {
+    setBasicColor(DEFAULT_BASIC_COLOR);
+    setBasicHexInput(DEFAULT_BASIC_COLOR);
+  }, []);
+
+  const handleRingColorPickerChange = useCallback((index: number, value: string) => {
+    const fallback = DEFAULT_RING_COLORS[Math.min(index, DEFAULT_RING_COLORS.length - 1)];
+    const normalized = normalizeHex(value, fallback);
+    setRingColors((prev) => {
+      const next = [...prev];
+      next[index] = normalized;
+      return next;
+    });
+    setRingHexInputs((prev) => {
+      const next = [...prev];
+      next[index] = normalized;
+      return next;
+    });
+  }, []);
+
+  const handleRingHexInputChange = useCallback((index: number, value: string) => {
+    setRingHexInputs((prev) => {
+      const next = [...prev];
+      next[index] = value.toUpperCase();
+      return next;
+    });
+  }, []);
+
+  const handleRingHexInputBlur = useCallback(
+    (index: number) => {
+      const fallback = DEFAULT_RING_COLORS[Math.min(index, DEFAULT_RING_COLORS.length - 1)];
+      const normalized = normalizeHex(ringHexInputs[index], fallback);
+      setRingHexInputs((prev) => {
+        const next = [...prev];
+        next[index] = normalized;
+        return next;
+      });
+      setRingColors((prev) => {
+        const next = [...prev];
+        next[index] = normalized;
+        return next;
+      });
+    },
+    [ringHexInputs],
+  );
+
+  const handleRingColorReset = useCallback(() => {
+    const defaults = [...DEFAULT_RING_COLORS];
+    setRingColors(defaults);
+    setRingHexInputs(defaults);
+  }, []);
+
+  const featureStyle = useCallback(
+    (feature?: any): L.PathOptions => {
+      const props = feature?.properties ?? {};
+      const isHull = props?.type === 'ring_hull';
+      const fillColorProp = typeof props?.fill_color === 'string' ? props.fill_color : undefined;
+      const strokeColorProp = typeof props?.stroke_color === 'string' ? props.stroke_color : MAP_OUTLINE_COLOR;
+      const strokeWidthProp =
+        typeof props?.stroke_width === 'number' && Number.isFinite(props.stroke_width) ? props.stroke_width : MAP_OUTLINE_WIDTH;
+
+      return {
+        color: strokeColorProp,
+        weight: strokeWidthProp,
+        opacity: 1,
+        fillColor: fillColorProp ?? strokeColorProp,
+        fillOpacity: fillColorProp ? MAP_FILL_OPACITY : 0,
+        dashArray: isHull ? '6 4' : undefined,
+      };
+    },
+    [],
+  );
+
+  const ringSummaryWithColors = useMemo(() => {
+    if (!summary?.ringClasses) {
+      return [];
+    }
+    const colorByLabel = new Map<string, string>();
+    rings?.features.forEach((feature) => {
+      const props = feature.properties as Record<string, any> | undefined;
+      const label = typeof props?.distance_class === 'string' ? props.distance_class : typeof props?.name === 'string' ? props.name : null;
+      const fillColor = typeof props?.fill_color === 'string' ? props.fill_color : null;
+      if (label && fillColor) {
+        colorByLabel.set(label, fillColor);
+      }
+    });
+    return summary.ringClasses.map((ring) => ({
+      ...ring,
+      color: colorByLabel.get(ring.label) ?? null,
+    }));
+  }, [rings, summary]);
+
   const handleGenerate = useCallback(async () => {
     if (!pointsFile) {
       setUploadError('Upload a trough point dataset to continue.');
@@ -140,7 +301,32 @@ export function GrazingMapsView() {
     setUploadError(null);
 
     try {
-      const result = await apiClient.processGrazing(pointsFile, method, boundaryFile ?? undefined);
+      const sanitizedBasicColor = normalizeHex(basicHexInput, DEFAULT_BASIC_COLOR);
+      if (sanitizedBasicColor !== basicColor) {
+        setBasicColor(sanitizedBasicColor);
+      }
+      if (sanitizedBasicColor !== basicHexInput) {
+        setBasicHexInput(sanitizedBasicColor);
+      }
+
+      const sanitizedRingColors = ringHexInputs.map((value, index) =>
+        normalizeHex(value, DEFAULT_RING_COLORS[Math.min(index, DEFAULT_RING_COLORS.length - 1)]),
+      );
+      if (sanitizedRingColors.some((color, index) => color !== ringHexInputs[index])) {
+        setRingHexInputs(sanitizedRingColors);
+      }
+      if (sanitizedRingColors.some((color, index) => color !== ringColors[index])) {
+        setRingColors(sanitizedRingColors);
+      }
+
+      const trimmedFolder = folderName.trim();
+
+      const result = await apiClient.processGrazing(pointsFile, method, {
+        boundary: boundaryFile,
+        folderName: trimmedFolder ? trimmedFolder : undefined,
+        colorBasic: sanitizedBasicColor,
+        colorRings: sanitizedRingColors,
+      });
       setSummary(result.summary);
       setDownloads(result.downloads);
 
@@ -165,7 +351,18 @@ export function GrazingMapsView() {
     } finally {
       setIsProcessing(false);
     }
-  }, [boundaryFile, fitToResults, method, pointsFile, resetResults]);
+  }, [
+    basicColor,
+    basicHexInput,
+    boundaryFile,
+    fitToResults,
+    folderName,
+    method,
+    pointsFile,
+    resetResults,
+    ringColors,
+    ringHexInputs,
+  ]);
 
   const handleDownload = useCallback(
     (key: DownloadKey) => {
@@ -192,47 +389,6 @@ export function GrazingMapsView() {
     [downloads],
   );
 
-  const bufferLayerStyle = useMemo(
-    () => ({
-      color: '#2563eb',
-      weight: 2,
-      fillColor: '#60a5fa',
-      fillOpacity: 0.35,
-    }),
-    [],
-  );
-
-  const convexLayerStyle = useMemo(
-    () => ({
-      color: '#0f766e',
-      weight: 2,
-      fillColor: '#14b8a6',
-      fillOpacity: 0.25,
-    }),
-    [],
-  );
-
-  const ringLayerStyle = useMemo(
-    () => ({
-      color: '#be185d',
-      weight: 2,
-      fillColor: '#f472b6',
-      fillOpacity: 0.3,
-    }),
-    [],
-  );
-
-  const ringHullLayerStyle = useMemo(
-    () => ({
-      color: '#ea580c',
-      weight: 2,
-      dashArray: '6 4',
-      fillColor: '#fb923c',
-      fillOpacity: 0.18,
-    }),
-    [],
-  );
-
   const hasBasicResults = Boolean(method === 'basic' && buffers && convex && summary);
   const hasAdvancedResults = Boolean(method === 'advanced' && (rings || ringHulls) && summary);
   const hasResults = hasBasicResults || hasAdvancedResults;
@@ -249,18 +405,10 @@ export function GrazingMapsView() {
             ref={handleMapRef}
           >
             <TileLayer url={basemapUrl} attribution={basemapAttribution} />
-            {buffers && (
-              <GeoJSON key="buffers" data={buffers as any} style={() => bufferLayerStyle} />
-            )}
-            {convex && (
-              <GeoJSON key="convex" data={convex as any} style={() => convexLayerStyle} />
-            )}
-            {rings && (
-              <GeoJSON key="rings" data={rings as any} style={() => ringLayerStyle} />
-            )}
-            {ringHulls && (
-              <GeoJSON key="ring-hulls" data={ringHulls as any} style={() => ringHullLayerStyle} />
-            )}
+            {buffers && <GeoJSON key="buffers" data={buffers as any} style={featureStyle as any} />}
+            {convex && <GeoJSON key="convex" data={convex as any} style={featureStyle as any} />}
+            {rings && <GeoJSON key="rings" data={rings as any} style={featureStyle as any} />}
+            {ringHulls && <GeoJSON key="ring-hulls" data={ringHulls as any} style={featureStyle as any} />}
           </MapContainer>
 
           {!hasResults && (
@@ -358,6 +506,118 @@ export function GrazingMapsView() {
                 )}
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="grazing-folder-name" className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Output Folder Name
+                </Label>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Input
+                    id="grazing-folder-name"
+                    type="text"
+                    placeholder="e.g., 252 Postmans Ridge Road"
+                    value={folderName}
+                    onChange={(event) => setFolderName(event.target.value)}
+                    className="text-sm flex-1"
+                    maxLength={120}
+                    autoComplete="off"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setFolderName((prev) => formatFolderName(prev))}
+                    disabled={!folderName.trim()}
+                    className="flex items-center gap-1 shrink-0"
+                  >
+                    <TextAa className="w-4 h-4" />
+                    Format
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Applies consistent casing and punctuation in the exported KMZ/KML names. Leave empty to use defaults.
+                </p>
+              </div>
+
+              {method === 'basic' ? (
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Buffer Colour
+                  </Label>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <input
+                      type="color"
+                      value={basicColor}
+                      onChange={handleBasicColorPickerChange}
+                      className="h-10 w-16 cursor-pointer rounded border border-input bg-background p-1"
+                      aria-label="Choose buffer colour"
+                    />
+                    <Input
+                      value={basicHexInput}
+                      onChange={handleBasicHexInputChange}
+                      onBlur={handleBasicHexInputBlur}
+                      maxLength={7}
+                      className="w-28 font-mono text-xs uppercase"
+                      aria-label="Hex buffer colour"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleBasicColorReset}
+                      disabled={basicColorIsDefault}
+                    >
+                      Reset
+                    </Button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Used for the 3 km buffers and smoothed convex hull. Fill opacity is fixed at 40% with a 4 px black outline.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Ring Colours
+                  </Label>
+                  <div className="space-y-2">
+                    {ringColorRows.map((row) => (
+                      <div key={row.label} className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                        <span className="w-28 text-foreground font-medium">{row.label}</span>
+                        <input
+                          type="color"
+                          value={row.color}
+                          onChange={(event) => handleRingColorPickerChange(row.index, event.target.value)}
+                          className="h-9 w-14 cursor-pointer rounded border border-input bg-background p-1"
+                          aria-label={`Colour for ${row.label}`}
+                        />
+                        <Input
+                          value={row.hex}
+                          onChange={(event) => handleRingHexInputChange(row.index, event.target.value)}
+                          onBlur={() => handleRingHexInputBlur(row.index)}
+                          maxLength={7}
+                          className="w-24 font-mono text-xs uppercase"
+                          aria-label={`Hex colour for ${row.label}`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleRingColorReset}
+                        disabled={ringColorsAreDefault}
+                      >
+                        Reset Colours
+                      </Button>
+                      <span>Outer ring keeps a 4 px black outline automatically.</span>
+                    </div>
+                    <span>Fill opacity is fixed at 40% so the three ring classes remain comparable.</span>
+                  </div>
+                </div>
+              )}
+
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-[11px] text-muted-foreground">
                   Both files must be supplied before generating zones.
@@ -394,37 +654,62 @@ export function GrazingMapsView() {
                     )}
                   </div>
 
-                  {method === 'advanced' && summary.ringClasses && summary.ringClasses.length > 0 ? (
+                  {method === 'advanced' && ringSummaryWithColors.length > 0 ? (
                     <div className="rounded-lg border bg-muted/40 p-3 space-y-2">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Ring Classes</div>
-                      <div className="space-y-1">
-                        {summary.ringClasses.map((ring) => (
-                          <div key={ring.label} className="flex flex-col gap-0.5 text-muted-foreground">
-                            <div className="flex items-center justify-between text-foreground">
-                              <span className="font-medium">{ring.label} km</span>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        Ring Classes
+                      </div>
+                      <div className="space-y-2">
+                        {ringSummaryWithColors.map((ring) => (
+                          <div key={ring.label} className="rounded-md bg-background/60 p-3 text-[11px] text-muted-foreground">
+                            <div className="flex items-center justify-between gap-2 text-foreground">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className="inline-flex h-3 w-3 rounded-full border border-border"
+                                  style={{ backgroundColor: ring.color ?? '#94a3b8', opacity: MAP_FILL_OPACITY }}
+                                  aria-hidden
+                                />
+                                <span className="font-medium text-sm">{ring.label} km</span>
+                              </div>
                               <span>Weight {ring.weight.toFixed(2)}</span>
                             </div>
-                            <div className="flex items-center justify-between">
+                            <div className="mt-2 grid grid-cols-2 gap-y-1 gap-x-4">
                               <span>Ring area</span>
-                              <span>{ring.areaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</span>
-                            </div>
-                            <div className="flex items-center justify-between">
+                              <span className="text-right text-foreground">
+                                {ring.areaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha
+                              </span>
                               <span>Convex hull area</span>
-                              <span>{ring.hullAreaHa?.toLocaleString(undefined, { maximumFractionDigits: 2 }) ?? '—'} ha</span>
+                              <span className="text-right text-foreground">
+                                {typeof ring.hullAreaHa === 'number'
+                                  ? `${ring.hullAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha`
+                                  : '—'}
+                              </span>
                             </div>
                           </div>
                         ))}
                       </div>
                     </div>
                   ) : (
-                    <div className="rounded-lg border bg-muted/40 p-3 space-y-2">
+                    <div className="rounded-lg border bg-muted/40 p-3 space-y-3">
+                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <span
+                          className="inline-flex h-3 w-3 rounded-full border border-border"
+                          style={{ backgroundColor: basicColor, opacity: MAP_FILL_OPACITY }}
+                          aria-hidden
+                        />
+                        <span>{basicColor}</span>
+                      </div>
                       <div className="flex items-center justify-between">
                         <span className="font-medium text-foreground">3 km Buffers</span>
-                        <span className="text-muted-foreground">{summary.bufferAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</span>
+                        <span className="text-muted-foreground">
+                          {summary.bufferAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha
+                        </span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="font-medium text-foreground">Smoothed Convex Hull</span>
-                        <span className="text-muted-foreground">{summary.convexAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</span>
+                        <span className="text-muted-foreground">
+                          {summary.convexAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha
+                        </span>
                       </div>
                     </div>
                   )}
