@@ -24,7 +24,7 @@ ADVANCED_BREAKS_KM = [0.5, 1.5, 3.0]
 ADVANCED_WEIGHTS = [1.0, 0.75, 0.5]
 
 DEFAULT_BASIC_COLOR = "#5EC68F"
-DEFAULT_RING_COLORS = [ "#4FA679","#5EC68F", "#FCEE9C"]
+DEFAULT_RING_COLORS = ["#5EC68F", "#4FA679", "#FCEE9C"]
 DEFAULT_CONCAVE_ALPHA = 0.0005
 MIN_CONCAVE_ALPHA = 0.000001
 MAX_CONCAVE_ALPHA = 0.05
@@ -63,6 +63,7 @@ class GrazingSummary(BaseModel):
     bufferAreaHa: float = 0.0
     convexAreaHa: float = 0.0
     concaveAlpha: Optional[float] = None
+    concaveTightness: Optional[float] = None
     ringClasses: List[Dict[str, Any]] = []
 
 
@@ -468,6 +469,15 @@ def _auto_alpha(projected_points: Sequence[Point]) -> float:
     return max(MIN_CONCAVE_ALPHA, min(MAX_CONCAVE_ALPHA, alpha))
 
 
+def _percent_to_alpha(percent: float, auto_alpha: float) -> float:
+    clamped = max(0.0, min(100.0, percent))
+    base_alpha = auto_alpha if auto_alpha > 0 else DEFAULT_CONCAVE_ALPHA
+    # tightest (100%) => base alpha, loosest (0%) => up to 5x base alpha
+    loosen_factor = 1.0 + (1.0 - clamped / 100.0) * 4.0
+    candidate = base_alpha * loosen_factor
+    return max(MIN_CONCAVE_ALPHA, min(MAX_CONCAVE_ALPHA, candidate))
+
+
 def _create_basic_shapefile_zip(
     buffers: MultiPolygon,
     hull: Polygon,
@@ -655,6 +665,17 @@ def _feature_collection_from_polygons(
     return GrazingFeatureCollection(features=features)
 
 
+def _percent_to_alpha(percent: float, auto_alpha: float) -> float:
+    clamped = max(0.0, min(100.0, percent))
+    if clamped == 100.0:
+        return MAX_CONCAVE_ALPHA
+    if clamped == 0.0:
+        # ensure loose hull isn't larger than auto
+        return min(auto_alpha * 5, MAX_CONCAVE_ALPHA)
+    scale = clamped / 100.0
+    return max(MIN_CONCAVE_ALPHA, min(MAX_CONCAVE_ALPHA, auto_alpha * (1 + (1 - scale))))
+
+
 def _run_basic_method(
     points: List[Point],
     boundary_wgs: MultiPolygon,
@@ -673,8 +694,12 @@ def _run_basic_method(
     buffer_union_metric = _ensure_multipolygon(clipped_buffers)
 
     auto_alpha = _auto_alpha(projected_points)
-    used_alpha = alpha_override if alpha_override is not None else auto_alpha
-    used_alpha = max(MIN_CONCAVE_ALPHA, min(MAX_CONCAVE_ALPHA, used_alpha))
+    if alpha_override is not None:
+        used_alpha = max(MIN_CONCAVE_ALPHA, min(MAX_CONCAVE_ALPHA, alpha_override))
+        tightness = (used_alpha / auto_alpha) * 100 if auto_alpha > 0 else 100.0
+    else:
+        used_alpha = auto_alpha
+        tightness = 100.0
 
     concave_metric = _compute_concave_hull(buffer_union_metric, used_alpha)
     concave_metric = _ensure_multipolygon(concave_metric)
@@ -746,6 +771,7 @@ def _run_basic_method(
         bufferAreaHa=round(sum(buffer_areas), 3),
         convexAreaHa=round(concave_area, 3),
         concaveAlpha=round(used_alpha, 6),
+        concaveTightness=round(tightness, 2),
     )
 
     return GrazingProcessResponse(
