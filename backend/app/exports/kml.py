@@ -328,15 +328,39 @@ def export_kml(features: List[Feature], style_options: StyleOptions = None) -> s
 
 # ---------- Helpers ----------
 
+def _extract_prop(props, key: str) -> Optional[Any]:
+    if hasattr(props, key):
+        value = getattr(props, key)
+        if value is not None:
+            return value
+    if isinstance(props, dict):
+        return props.get(key)
+    return None
+
+
 def _display_name_from_props(props) -> str:
-    """
-    Sidebar name should be just the lotplan.
-    Tries common fields in order; falls back to id if nothing else exists.
-    """
-    for key in ("lotplan", "lot_plan", "lot_plan_id", "parcel_spi", "PARCEL_SPI", "name"):
-        if hasattr(props, key) and getattr(props, key):
-            return str(getattr(props, key))
-    return str(getattr(props, "id", "Parcel"))
+    """Sidebar name should be just the lotplan when possible."""
+
+    lotplan = _extract_prop(props, "lotplan")
+    if lotplan:
+        return str(lotplan)
+
+    lot = _extract_prop(props, "LOT") or _extract_prop(props, "lot")
+    plan = _extract_prop(props, "PLAN") or _extract_prop(props, "plan")
+    if lot and plan:
+        return f"{lot}{plan}"
+
+    for key in ("lot_plan", "lot_plan_id", "parcel_spi", "PARCEL_SPI", "name"):
+        value = _extract_prop(props, key)
+        if value:
+            return str(value)
+
+    identifier = _extract_prop(props, "id")
+    if isinstance(identifier, str):
+        cleaned = identifier.replace("ParcelState.", "").replace(" Parcel", "").strip()
+        if cleaned:
+            return cleaned
+    return str(identifier or "Parcel")
 
 
 def _clean_text(value: Optional[Any]) -> str:

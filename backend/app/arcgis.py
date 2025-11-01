@@ -484,7 +484,8 @@ class ArcGISClient:
             
             # Extract standard fields
             feature_id = properties.get(field_mapping['id_field'], 'unknown')
-            name = properties.get(field_mapping['name_field'], f"{state} Parcel {feature_id}")
+            state_label = state.value if isinstance(state, ParcelState) else str(state)
+            name = properties.get(field_mapping['name_field'], f"{state_label} Parcel {feature_id}")
 
             if state == ParcelState.NSW and isinstance(feature_id, str):
                 try:
@@ -549,6 +550,26 @@ class ArcGISClient:
                 if canonical:
                     feature_id = canonical
                     name = canonical
+
+            elif state == ParcelState.QLD:
+                feature_id = str(feature_id)
+                properties['lotplan'] = feature_id
+
+                lot_value = properties.get('lot')
+                plan_value = properties.get('plan')
+
+                if not (lot_value and plan_value):
+                    match = re.match(r"^([0-9]+[A-Z]?)([A-Z]{1,4}\d+)$", feature_id.upper())
+                    if match:
+                        lot_value = lot_value or match.group(1)
+                        plan_value = plan_value or match.group(2)
+
+                if lot_value:
+                    properties['lot'] = lot_value
+                if plan_value:
+                    properties['plan'] = plan_value
+
+                name = feature_id
 
             elif state == ParcelState.VIC and isinstance(feature_id, str):
                 try:

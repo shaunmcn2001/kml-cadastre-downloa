@@ -117,6 +117,9 @@ export function MapView({
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const handleMapRef = useCallback((instance: L.Map | null) => {
+    mapRef.current = instance;
+  }, []);
   const searchMarkerRef = useRef<L.Marker | null>(null);
 
   const basemapConfig = {
@@ -539,9 +542,7 @@ export function MapView({
             zoom={6}
             className="h-full w-full"
             zoomControl
-            whenCreated={(mapInstance) => {
-              mapRef.current = mapInstance;
-            }}
+            ref={handleMapRef}
             style={{ background: 'transparent' }}
           >
             <TileLayer
