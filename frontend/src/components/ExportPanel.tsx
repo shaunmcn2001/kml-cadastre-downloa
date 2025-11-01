@@ -5,10 +5,11 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Download, Package, Image, WarningCircle, Folder, ArrowCircleDown } from '@phosphor-icons/react';
+import { Download, Package, Image, WarningCircle, Folder, ArrowCircleDown, TextAa } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { apiClient } from '../lib/api';
 import { cn } from '../lib/utils';
+import { formatFolderName } from '../lib/formatters';
 import type {
   ParcelFeature,
   LandTypeFeatureCollection,
@@ -402,15 +403,28 @@ export function ExportPanel({
               <Folder className="w-4 h-4" />
               Export Folder Name (Address)
             </Label>
-            <Input
-              id="folder-name"
-              type="text"
-              placeholder="e.g., 123 Sample Street"
-              value={folderName}
-              onChange={(e) => setFolderName(e.target.value)}
-              className="text-sm"
-              maxLength={100}
-            />
+            <div className="flex items-center gap-2">
+              <Input
+                id="folder-name"
+                type="text"
+                placeholder="e.g., 123 Sample Street"
+                value={folderName}
+                onChange={(e) => setFolderName(e.target.value)}
+                className="text-sm flex-1"
+                maxLength={100}
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setFolderName((prev) => formatFolderName(prev))}
+                disabled={!folderName.trim()}
+                className="flex items-center gap-1 shrink-0"
+              >
+                <TextAa className="w-4 h-4" />
+                Format
+              </Button>
+            </div>
             <p className="text-xs text-muted-foreground">
               Used for the KMZ folder and KML document name. Leave empty for default naming.
             </p>

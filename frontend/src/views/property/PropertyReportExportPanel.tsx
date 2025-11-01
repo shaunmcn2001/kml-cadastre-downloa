@@ -4,8 +4,10 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { TextAa } from '@phosphor-icons/react';
 import { apiClient } from '@/lib/api';
 import type { PropertyReportResponse } from '@/lib/types';
+import { formatFolderName } from '@/lib/formatters';
 
 interface PropertyReportExportPanelProps {
   report: PropertyReportResponse;
@@ -82,13 +84,26 @@ export function PropertyReportExportPanel({ report, visibleLayers }: PropertyRep
           <Label htmlFor="report-folder-name" className="text-xs text-muted-foreground">
             Export Folder Name (optional)
           </Label>
-          <Input
-            id="report-folder-name"
-            placeholder="e.g., SmithProperty"
-            value={folderName}
-            onChange={(event) => setFolderName(event.target.value)}
-            className="h-8 text-xs"
-          />
+          <div className="flex items-center gap-2">
+            <Input
+              id="report-folder-name"
+              placeholder="e.g., SmithProperty"
+              value={folderName}
+              onChange={(event) => setFolderName(event.target.value)}
+              className="h-8 text-xs flex-1"
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setFolderName((prev) => formatFolderName(prev))}
+              disabled={!folderName.trim()}
+              className="flex items-center gap-1 shrink-0"
+            >
+              <TextAa className="w-4 h-4" />
+              Format
+            </Button>
+          </div>
           <p className="text-[11px] text-muted-foreground/70">
             Used for KMZ/KML document naming. Leave blank for automatic naming.
           </p>
