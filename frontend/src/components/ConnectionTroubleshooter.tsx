@@ -10,7 +10,6 @@ import {
   Info, 
   ExternalLink, 
   Clock,
-  AlertTriangle,
   CheckCircle,
   Warning
 } from '@phosphor-icons/react';
@@ -66,7 +65,7 @@ export function ConnectionTroubleshooter({ onConnectionSuccess }: ConnectionTrou
     switch (status) {
       case 'pass': return <CheckCircle className="w-4 h-4 text-accent" />;
       case 'warning': return <Warning className="w-4 h-4 text-yellow-500" />;
-      case 'fail': return <AlertTriangle className="w-4 h-4 text-destructive" />;
+      case 'fail': return <Warning className="w-4 h-4 text-destructive" />;
     }
   };
 

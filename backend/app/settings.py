@@ -9,7 +9,7 @@ from .utils.rate_limit import get_rate_limiter
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
 CACHE_TTL = int(os.getenv("CACHE_TTL", "900"))
-MAX_IDS_PER_CHUNK = int(os.getenv("MAX_IDS_PER_CHUNK", "50"))
+MAX_IDS_PER_CHUNK = int(os.getenv("MAX_IDS_PER_CHUNK", "200"))
 ARCGIS_TIMEOUT = int(os.getenv("ARCGIS_TIMEOUT_S", "20"))
 RATE_LIMIT_MAX_REQUESTS = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "100"))
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))

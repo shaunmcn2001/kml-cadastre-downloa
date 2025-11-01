@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Download, Package, Image, AlertTriangle, Folder, ArrowCircleDown } from '@phosphor-icons/react';
+import { Download, Package, Image, WarningCircle, Folder, ArrowCircleDown } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { apiClient } from '../lib/api';
 import { cn } from '../lib/utils';
@@ -467,9 +467,6 @@ export function ExportPanel({
                 Reset
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Fill opacity is fixed at 40%. The 3px outline uses the same colour for clarity in Google Earth.
-            </p>
           </div>
 
           <Separator />
@@ -564,7 +561,7 @@ export function ExportPanel({
                     key={`landtype-warning-${index}`}
                     className="flex items-start gap-2 text-[11px] text-amber-600"
                   >
-                    <AlertTriangle className="w-4 h-4 mt-0.5" />
+                    <WarningCircle className="w-4 h-4 mt-0.5" />
                     <span>{warning}</span>
                   </div>
                 ))}
@@ -707,7 +704,7 @@ export function ExportPanel({
 
         {!hasFeatures && !isQuerying && (
           <div className="text-center py-6 text-muted-foreground">
-            <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <WarningCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
             <p className="text-sm">No data to export</p>
             <p className="text-xs mt-1">Query parcels first to enable downloads</p>
           </div>
@@ -724,7 +721,6 @@ export function ExportPanel({
           <p><strong>KML:</strong> For Google Earth Web & Pro, compatible with latest version</p>
           <p><strong>KMZ:</strong> Compressed KML with enhanced styling for Google Earth</p>
           <p><strong>GeoTIFF:</strong> Raster format for advanced GIS analysis</p>
-          <p className="text-accent font-medium mt-2">✓ Optimized for Google Earth 9.x and Google Earth Web</p>
         </div>
       </CardContent>
     </Card>

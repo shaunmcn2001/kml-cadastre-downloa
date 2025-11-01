@@ -130,8 +130,8 @@ def parse_nsw(raw_text: str) -> Tuple[List[ParsedParcel], List[MalformedEntry]]:
                 end = int(range_match.group("end"))
                 plan = _normalize_plan(range_match.group("plan"))
 
-                if end < start or end - start > 100:
-                    raise ValueError("Range too large or invalid (max 100 lots)")
+                if end < start or end - start > 200:
+                    raise ValueError("Range too large or invalid (max 200 lots)")
 
                 for value in range(start, end + 1):
                     identifier, lot, _, plan_clean = _canonical_id(str(value), plan)

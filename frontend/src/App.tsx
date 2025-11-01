@@ -21,6 +21,7 @@ import logoImage from './assets/logo.png';
 
 function App() {
   const [features, setFeatures] = useState<ParcelFeature[]>([]);
+  const featuresRef = useRef<ParcelFeature[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isQuerying, setIsQuerying] = useState(false);
   const [backendError, setBackendError] = useState<string | null>(null);
@@ -63,6 +64,52 @@ function App() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [updateNavIndicator]);
+
+  useEffect(() => {
+    featuresRef.current = features;
+  }, [features]);
+
+  useEffect(() => {
+    const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+    let timeoutId: number | undefined;
+
+    const resetTimer = () => {
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
+      timeoutId = window.setTimeout(() => {
+        window.location.reload();
+      }, INACTIVITY_TIMEOUT_MS);
+    };
+
+    const activityEvents: Array<keyof WindowEventMap> = [
+      'mousemove',
+      'mousedown',
+      'keydown',
+      'touchstart',
+      'scroll',
+      'focus',
+    ];
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        resetTimer();
+      }
+    };
+
+    activityEvents.forEach((event) => window.addEventListener(event, resetTimer));
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    resetTimer();
+
+    return () => {
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
+      activityEvents.forEach((event) => window.removeEventListener(event, resetTimer));
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
 
   const testBackendConnection = async () => {
     if (devSkipBackend) {
@@ -149,16 +196,45 @@ function App() {
         ids: parcelIds,
         options: {
           pageSize: 1000,
-          simplifyTol: 0.0001
+        simplifyTol: 0.0001
         }
       });
 
-      setFeatures(response.features);
-      
       if (response.features.length === 0) {
         toast.warning('No parcels found for the provided identifiers');
+        return;
+      }
+
+      const combinedFeatures = [...featuresRef.current];
+      const indexByKey = new Map<string, number>();
+      combinedFeatures.forEach((feature, index) => {
+        const key = `${feature.properties.state}:${feature.properties.id}`;
+        indexByKey.set(key, index);
+      });
+
+      let addedCount = 0;
+      for (const feature of response.features) {
+        const key = `${feature.properties.state}:${feature.properties.id}`;
+        const existingIndex = indexByKey.get(key);
+
+        if (existingIndex !== undefined) {
+          combinedFeatures[existingIndex] = feature;
+        } else {
+          indexByKey.set(key, combinedFeatures.length);
+          combinedFeatures.push(feature);
+          addedCount += 1;
+        }
+      }
+
+      setFeatures(combinedFeatures);
+      featuresRef.current = combinedFeatures;
+
+      if (addedCount === 0) {
+        toast.success(`Parcels already loaded (${combinedFeatures.length} total)`);
       } else {
-        toast.success(`Successfully loaded ${response.features.length} parcel(s)`);
+        toast.success(
+          `Added ${addedCount} parcel${addedCount === 1 ? '' : 's'} (${combinedFeatures.length} total)`,
+        );
       }
     } catch (error) {
       console.error('Query failed:', error);
@@ -170,11 +246,20 @@ function App() {
       }
       
       toast.error(`Query failed: ${errorMessage}`);
-      setFeatures([]);
     } finally {
       setIsQuerying(false);
     }
   };
+
+  const handleClearResults = useCallback(() => {
+    featuresRef.current = [];
+    setFeatures([]);
+    setLandTypeData(null);
+    setLandTypeEnabled(false);
+    setLandTypeLastBbox(null);
+    lastLandTypeKeyRef.current = null;
+    toast.info('Cleared loaded parcels');
+  }, []);
 
   const landTypeLotPlans = useMemo(() => {
     const ids = new Set<string>();
@@ -417,7 +502,9 @@ function App() {
               return (
                 <button
                   key={key}
-                  ref={(el) => (navButtonRefs.current[key] = el)}
+                  ref={(el) => {
+                    navButtonRefs.current[key] = el;
+                  }}
                   type="button"
                   onClick={() => setActiveView(key)}
                   className={`relative z-10 rounded-full px-5 py-1.5 text-sm font-medium transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 ${
@@ -467,6 +554,7 @@ function App() {
                 <ParcelInputPanel 
                   onQueryParcels={handleQueryParcels}
                   isQuerying={isQuerying}
+                  onClearResults={handleClearResults}
                 />
 
                 <ExportPanel 

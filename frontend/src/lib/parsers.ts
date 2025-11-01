@@ -110,8 +110,8 @@ export function parseNSW(rawText: string): {
         const end = Number.parseInt(rangeMatch.groups!.end!, 10);
         const plan = normalizeNSWPlan(rangeMatch.groups!.plan!);
 
-        if (end < start || end - start > 100) {
-          throw new Error('Range too large or invalid (max 100 lots)');
+        if (end < start || end - start > 200) {
+          throw new Error('Range too large or invalid (max 200 lots)');
         }
 
         for (let value = start; value <= end; value += 1) {

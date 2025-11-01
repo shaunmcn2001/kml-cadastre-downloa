@@ -6,16 +6,17 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Database, AlertTriangle, CheckCircle } from '@phosphor-icons/react';
+import { Database, WarningCircle, CheckCircle } from '@phosphor-icons/react';
 import { useParcelInput } from '../hooks/useParcelInput';
 import type { ParcelState } from '../lib/types';
 
 interface ParcelInputPanelProps {
   onQueryParcels: (parcelIds: string[], states: ParcelState[]) => void;
   isQuerying: boolean;
+  onClearResults?: () => void;
 }
 
-export function ParcelInputPanel({ onQueryParcels, isQuerying }: ParcelInputPanelProps) {
+export function ParcelInputPanel({ onQueryParcels, isQuerying, onClearResults }: ParcelInputPanelProps) {
   const {
     inputState,
     updateRawInput,
@@ -31,6 +32,12 @@ export function ParcelInputPanel({ onQueryParcels, isQuerying }: ParcelInputPane
       onQueryParcels(parcelIds, states);
       setHasAttemptedQuery(true);
     }
+  };
+
+  const handleClear = () => {
+    clearInput();
+    setHasAttemptedQuery(false);
+    onClearResults?.();
   };
 
   const exampleTexts = {
@@ -88,11 +95,6 @@ Lot 27 PS433970`
                 <div className="bg-muted p-2 rounded text-xs font-mono">
                   {exampleTexts.NSW}
                 </div>
-                <p className="mt-2 text-xs">
-                  Supports: LOT//PLAN, LOT/SECTION//PLAN (letters allowed), ranges (1-3//DP123),
-                  and "LOT 13 DP1242624" style inputs. Lowercase entries are normalised automatically.
-                  Use the parcel identifiers field below for manual entry or pasted results.
-                </p>
               </div>
             </TabsContent>
             
@@ -102,11 +104,6 @@ Lot 27 PS433970`
                 <div className="bg-muted p-2 rounded text-xs font-mono">
                   {exampleTexts.QLD}
                 </div>
-                <p className="mt-2 text-xs">
-                  Supports: contiguous lotplans (e.g. 1RP912949), spaced variants (1 RP 912949),
-                  and descriptive formats like “Lot 1 on RP912949”. Separate multiple entries with new
-                  lines or commas.
-                </p>
               </div>
             </TabsContent>
             
@@ -116,11 +113,6 @@ Lot 27 PS433970`
                 <div className="bg-muted p-2 rounded text-xs font-mono">
                   {exampleTexts.SA}
                 </div>
-                <p className="mt-2 text-xs">
-                  Supports: title references (e.g. CT6204/831), plan/lot combinations in any order
-                  (e.g. D117877 A22, A22 D117877, Lot S1 on S204930), and compact DCDB IDs
-                  like H210300S562. Separate multiple entries with new lines, commas, or semicolons.
-                </p>
               </div>
             </TabsContent>
 
@@ -172,7 +164,7 @@ Lot 27 PS433970`
 
             {inputState.malformedEntries.length > 0 && (
               <Alert variant="destructive">
-                <AlertTriangle className="h-4 w-4" />
+                <WarningCircle className="h-4 w-4" />
                 <AlertDescription>
                   <div className="space-y-2">
                     <p><strong>{inputState.malformedEntries.length}</strong> malformed entries:</p>
@@ -203,9 +195,9 @@ Lot 27 PS433970`
           >
             {isQuerying ? 'Querying...' : `Query ${inputState.validParcels.length} Parcel(s)`}
           </Button>
-          <Button 
-            variant="outline" 
-            onClick={clearInput}
+          <Button
+            variant="outline"
+            onClick={handleClear}
             disabled={!inputState.rawInput}
           >
             Clear
