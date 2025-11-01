@@ -69,6 +69,7 @@ export function GrazingMapsView() {
   const [basicHexInput, setBasicHexInput] = useState<string>(DEFAULT_BASIC_COLOR);
   const [ringHexInputs, setRingHexInputs] = useState<string[]>(() => [...DEFAULT_RING_COLORS]);
   const [basicTightness, setBasicTightness] = useState<number>(DEFAULT_TIGHTNESS_PERCENT);
+  const [basicTightnessTouched, setBasicTightnessTouched] = useState<boolean>(false);
   const [buffers, setBuffers] = useState<GrazingFeatureCollection | null>(null);
   const [convex, setConvex] = useState<GrazingFeatureCollection | null>(null);
   const [rings, setRings] = useState<GrazingFeatureCollection | null>(null);
@@ -119,7 +120,14 @@ export function GrazingMapsView() {
   const handleMethodChange = useCallback(
     (value: string) => {
       if (!value) return;
-      setMethod(value as GrazingMethod);
+      const nextMethod = value as GrazingMethod;
+      setMethod(nextMethod);
+      if (nextMethod === 'basic') {
+        setBasicTightness(DEFAULT_TIGHTNESS_PERCENT);
+        setBasicTightnessTouched(false);
+      } else {
+        setBasicTightnessTouched(true);
+      }
       resetResults();
     },
     [resetResults],
@@ -130,14 +138,20 @@ export function GrazingMapsView() {
     setPointsFile(file);
     setUploadError(null);
     event.target.value = '';
-  }, []);
+    if (method === 'basic') {
+      setBasicTightnessTouched(false);
+    }
+  }, [method]);
 
   const handleBoundarySelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
     setBoundaryFile(file);
     setUploadError(null);
     event.target.value = '';
-  }, []);
+    if (method === 'basic') {
+      setBasicTightnessTouched(false);
+    }
+  }, [method]);
 
   const preventDefault = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -149,8 +163,11 @@ export function GrazingMapsView() {
     if (file) {
       setPointsFile(file);
       setUploadError(null);
+      if (method === 'basic') {
+        setBasicTightnessTouched(false);
+      }
     }
-  }, []);
+  }, [method]);
 
   const handleBoundaryDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -158,8 +175,11 @@ export function GrazingMapsView() {
     if (file) {
       setBoundaryFile(file);
       setUploadError(null);
+      if (method === 'basic') {
+        setBasicTightnessTouched(false);
+      }
     }
-  }, []);
+  }, [method]);
 
   const basicColorIsDefault = useMemo(() => basicColor === DEFAULT_BASIC_COLOR, [basicColor]);
 
@@ -213,6 +233,7 @@ export function GrazingMapsView() {
     }
     const clamped = Math.min(MAX_TIGHTNESS_PERCENT, Math.max(MIN_TIGHTNESS_PERCENT, value[0] ?? DEFAULT_TIGHTNESS_PERCENT));
     setBasicTightness(clamped);
+    setBasicTightnessTouched(true);
   }, []);
 
   const handleRingColorPickerChange = useCallback((index: number, value: string) => {
@@ -311,6 +332,10 @@ export function GrazingMapsView() {
       setUploadError('Upload a boundary file to clip the grazing areas.');
       return;
     }
+    if (method === 'basic' && !basicTightnessTouched) {
+      setUploadError('Select a hull tightness before generating zones.');
+      return;
+    }
 
     setIsProcessing(true);
     setUploadError(null);
@@ -356,6 +381,7 @@ export function GrazingMapsView() {
           Math.max(MIN_TIGHTNESS_PERCENT, result.summary.concaveTightness),
         ));
         setBasicTightness(tightened);
+        setBasicTightnessTouched(true);
       }
 
       setLayerVersion((prev) => prev + 1);
@@ -393,6 +419,8 @@ export function GrazingMapsView() {
     resetResults,
     ringColors,
     ringHexInputs,
+    basicTightness,
+    basicTightnessTouched,
   ]);
 
   const handleDownload = useCallback(
@@ -605,11 +633,11 @@ export function GrazingMapsView() {
                       Used for the 3 km buffers and concave hull. Fill opacity is fixed at 40% with a 4 px black outline.
                     </p>
                   </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                        Hull Tightness (%)
-                      </Label>
-                      <div className="space-y-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      Hull Tightness (%)
+                    </Label>
+                    <div className="space-y-2">
                       <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                         <span>Looser</span>
                         <span className="font-medium text-foreground">{Math.round(basicTightness)}%</span>
@@ -628,14 +656,22 @@ export function GrazingMapsView() {
                         size="sm"
                         variant="ghost"
                         className="px-2 py-0 h-7"
-                        onClick={() => setBasicTightness(DEFAULT_TIGHTNESS_PERCENT)}
-                        disabled={Math.round(basicTightness) === DEFAULT_TIGHTNESS_PERCENT}
+                        onClick={() => {
+                          setBasicTightness(DEFAULT_TIGHTNESS_PERCENT);
+                          setBasicTightnessTouched(false);
+                        }}
+                        disabled={Math.round(basicTightness) === DEFAULT_TIGHTNESS_PERCENT && !basicTightnessTouched}
                       >
                         Reset to 100%
                       </Button>
                       <p className="text-[11px] text-muted-foreground">
-                        100% keeps the hull tight around the buffers. Reduce the percentage to smooth and loosen the developed area. Auto defaults to 100%.
+                        100% keeps the hull tight around the buffers. Reduce the percentage to smooth and loosen the developed area.
                       </p>
+                      {!basicTightnessTouched && (
+                        <p className="text-[11px] font-medium text-destructive">
+                          Choose a tightness value before generating.
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -690,7 +726,7 @@ export function GrazingMapsView() {
                 </div>
                 <Button
                   onClick={handleGenerate}
-                  disabled={!pointsFile || !boundaryFile || isProcessing}
+                  disabled={!pointsFile || !boundaryFile || isProcessing || (method === 'basic' && !basicTightnessTouched)}
                   className="sm:w-auto"
                 >
                   {isProcessing ? 'Processing…' : `Generate ${method === 'basic' ? 'Basic Zones' : 'Advanced Rings'}`}
