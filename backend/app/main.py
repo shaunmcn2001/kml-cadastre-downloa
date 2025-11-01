@@ -58,14 +58,16 @@ app.include_router(grazing_router, prefix="/api/grazing", tags=["grazing"])
 
 # CORS configuration
 origins = [origin.strip() for origin in FRONTEND_ORIGIN.split(",") if origin.strip()]
+allow_credentials = True
 if not origins:
     origins = ["*"]
-elif "*" in origins:
+if "*" in origins:
     origins = ["*"]
+    allow_credentials = False
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=True,
+    allow_credentials=allow_credentials,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
