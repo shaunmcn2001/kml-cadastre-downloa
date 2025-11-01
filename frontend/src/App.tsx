@@ -17,7 +17,7 @@ import type {
 import { PropertyReportsView } from './views/PropertyReportsView';
 import { SmartMapsView } from './views/SmartMapsView';
 import { GrazingMapsView } from './views/GrazingMapsView';
-import logoImage from './assets/logo.png';
+import logoImage from './assets/logo.webp';
 
 function App() {
   const [features, setFeatures] = useState<ParcelFeature[]>([]);

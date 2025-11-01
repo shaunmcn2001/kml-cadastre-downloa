@@ -392,19 +392,23 @@ def _create_basic_kml(
 
     hull_folder = doc.newfolder(name="Developed Area")
 
-    hull_polys = _extract_polygons_from_geom(hull_geom)
-    if not hull_polys:
-        hull_polys = _extract_polygons_from_geom(_merge_polygons(buffers.geoms))
+    if isinstance(hull_geom, MultiPolygon):
+        if len(hull_geom.geoms) == 1:
+            hull_geom = hull_geom.geoms[0]
+        else:
+            merged = hull_geom.buffer(0)
+            hull_geom = merged if isinstance(merged, Polygon) else hull_geom.convex_hull
 
-    for idx, poly in enumerate(hull_polys, start=1):
-        placemark = hull_folder.newpolygon(name=f"Developed Area {idx}")
-        placemark.outerboundaryis.coords = list(poly.exterior.coords)
-        for interior in poly.interiors:
-            placemark.innerboundaryis.append(list(interior.coords))
-        placemark.style.polystyle.color = fill_kml
-        placemark.style.polystyle.fill = 1
-        placemark.style.linestyle.color = outline_kml
-        placemark.style.linestyle.width = OUTLINE_WIDTH
+    polygon_geom = hull_geom if isinstance(hull_geom, Polygon) else hull_geom.convex_hull
+
+    placemark = hull_folder.newpolygon(name="Developed Area")
+    placemark.outerboundaryis.coords = list(polygon_geom.exterior.coords)
+    for interior in polygon_geom.interiors:
+        placemark.innerboundaryis.append(list(interior.coords))
+    placemark.style.polystyle.color = fill_kml
+    placemark.style.polystyle.fill = 1
+    placemark.style.linestyle.color = outline_kml
+    placemark.style.linestyle.width = OUTLINE_WIDTH
 
     return doc.kml().encode("utf-8")
 
@@ -416,30 +420,46 @@ def _create_kmz(kml_bytes: bytes) -> bytes:
     return output.getvalue()
 
 
-def _compute_concave_hull(polygons: MultiPolygon, alpha: float) -> MultiPolygon:
-    coords: List[Tuple[float, float]] = []
-    for poly in polygons.geoms:
-        coords.extend((float(x), float(y)) for x, y, *_ in poly.exterior.coords)
-        for interior in poly.interiors:
-            coords.extend((float(x), float(y)) for x, y, *_ in interior.coords)
+def _compute_concave_hull(polygons: MultiPolygon, alpha: float) -> Polygon:
+    merged = unary_union(polygons)
+    base_polygons = _extract_polygons_from_geom(merged)
+    if not base_polygons:
+        raise HTTPException(status_code=400, detail="Unable to build base geometry for concave hull")
 
-    unique_coords = list(dict.fromkeys(coords))  # preserve order while removing duplicates
-    if len(unique_coords) < 4:
-        merged = unary_union(polygons)
-        return _ensure_multipolygon(merged if isinstance(merged, (Polygon, MultiPolygon)) else merged.convex_hull)
+    boundary_points: List[np.ndarray] = []
+    for poly in base_polygons:
+        boundary_points.append(np.asarray(poly.exterior.coords))
+
+    if not boundary_points:
+        raise HTTPException(status_code=400, detail="Unable to collect boundary coordinates for concave hull")
+
+    all_points = np.concatenate(boundary_points, axis=0)
+    unique_points = np.unique(all_points, axis=0)
+
+    if unique_points.shape[0] < 4:
+        fallback = merged if isinstance(merged, Polygon) else merged.convex_hull
+        return fallback.buffer(0)
 
     try:
-        hull_geom = alphashape.alphashape(unique_coords, alpha)
-    except Exception:
-        merged = unary_union(polygons)
-        fallback = merged if isinstance(merged, (Polygon, MultiPolygon)) else merged.convex_hull
-        return _ensure_multipolygon(fallback)
+        hull_geom = alphashape.alphashape(unique_points, alpha)
+    except Exception as exc:
+        logger.warning("alphashape failed, using convex hull fallback", extra={"error": str(exc)})
+        hull_geom = merged.convex_hull
 
     hull_polygons = _extract_polygons_from_geom(hull_geom)
     if not hull_polygons:
-        merged = unary_union(polygons)
-        return _ensure_multipolygon(merged if isinstance(merged, (Polygon, MultiPolygon)) else merged.convex_hull)
-    return _merge_polygons(hull_polygons)
+        hull_polygons = base_polygons
+
+    combined = unary_union([polygon.buffer(0) for polygon in hull_polygons])
+    if isinstance(combined, Polygon):
+        return combined
+    if isinstance(combined, MultiPolygon):
+        combined = combined.buffer(0)
+        if isinstance(combined, Polygon):
+            return combined
+        return combined.convex_hull
+
+    return combined.convex_hull
 
 
 def _auto_alpha(projected_points: Sequence[Point]) -> float:
@@ -692,15 +712,16 @@ def _run_basic_method(
         used_alpha = auto_alpha
 
     concave_metric = _compute_concave_hull(buffer_union_metric, used_alpha)
-    concave_metric = _ensure_multipolygon(concave_metric)
-    concave_metric = _ensure_multipolygon(concave_metric.intersection(boundary_metric))
-    if concave_metric.is_empty:
-        concave_metric = buffer_union_metric
+    concave_clipped = concave_metric.intersection(boundary_metric)
+    if concave_clipped.is_empty:
+        concave_clipped = concave_metric
 
     buffer_geodetic = _ensure_multipolygon(_project_geometry(buffer_union_metric, forward=False).intersection(boundary_wgs))
-    concave_geodetic = _ensure_multipolygon(_project_geometry(concave_metric, forward=False).intersection(boundary_wgs))
+    concave_geodetic = _project_geometry(concave_clipped, forward=False).intersection(boundary_wgs)
     if concave_geodetic.is_empty:
-        concave_geodetic = buffer_geodetic
+        concave_geodetic = _project_geometry(concave_metric, forward=False).intersection(boundary_wgs)
+    if concave_geodetic.is_empty:
+        concave_geodetic = buffer_geodetic.buffer(0)
 
     buffer_areas = [_calculate_area_ha(poly) for poly in buffer_geodetic.geoms]
     concave_area = _calculate_area_ha(concave_geodetic)
@@ -712,15 +733,25 @@ def _run_basic_method(
         outline_color=OUTLINE_COLOR,
         outline_width=OUTLINE_WIDTH,
     )
-    concave_fc = _feature_collection_from_polygons(
-        concave_geodetic.geoms,
-        "concave",
-        color=buffer_color,
-        outline_color=OUTLINE_COLOR,
-        outline_width=OUTLINE_WIDTH,
+    concave_geom_final = concave_geodetic.buffer(0)
+    concave_fc = GrazingFeatureCollection(
+        features=[
+            GrazingFeature(
+                type="Feature",
+                geometry=concave_geom_final.__geo_interface__,
+                properties={
+                    "type": "concave",
+                    "name": "Developed Area",
+                    "area_ha": round(concave_area, 3),
+                    "fill_color": buffer_color,
+                    "stroke_color": OUTLINE_COLOR,
+                    "stroke_width": OUTLINE_WIDTH,
+                },
+            )
+        ]
     )
 
-    concave_merged = _merge_polygons(concave_geodetic.geoms)
+    concave_merged = concave_geom_final
 
     kml_bytes = _create_basic_kml(buffer_geodetic, concave_merged, buffer_color)
     kmz_bytes = _create_kmz(kml_bytes)
