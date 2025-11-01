@@ -15,7 +15,8 @@ import type {
   PropertyReportExportRequest,
   LandTypeFeatureCollection,
   LandTypeExportRequest,
-  LandTypeExportResponse
+  LandTypeExportResponse,
+  GrazingProcessResponse
 } from './types';
 
 function extractFilenameFromDisposition(disposition: string | null): string | null {
@@ -61,9 +62,12 @@ class ApiClient {
     try {
       const startTime = Date.now();
       
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
+      const headers: Record<string, string> = {};
+      const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+
+      if (!isFormData) {
+        headers['Content-Type'] = 'application/json';
+      }
 
       // Set appropriate Accept header based on response type
       if (responseType === 'json') {
@@ -72,10 +76,17 @@ class ApiClient {
         headers['Accept'] = '*/*';
       }
       
+      const fetchBody =
+        body === undefined
+          ? undefined
+          : isFormData
+          ? body
+          : JSON.stringify(body);
+
       const response = await fetch(url, {
         method,
         headers,
-        body: body ? JSON.stringify(body) : undefined,
+        body: fetchBody,
         signal: controller.signal,
         mode: 'cors',
         credentials: 'omit'
@@ -253,6 +264,12 @@ class ApiClient {
       this.debugEntries.push(debugEntry);
       this.notifyDebugListeners();
     }
+  }
+
+  async processGrazing(file: File): Promise<GrazingProcessResponse> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.makeRequest<GrazingProcessResponse>('POST', '/api/grazing/process', formData);
   }
 
   async fetchLandTypeGeojson(params: {

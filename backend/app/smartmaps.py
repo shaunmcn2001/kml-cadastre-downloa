@@ -36,11 +36,18 @@ async def _download_single(client: httpx.AsyncClient, lot: str, plan: str) -> Sm
     code = _build_query_code(lot, plan)
     url = f"{SMARTMAP_BASE_URL}?q={code}"
     response = await client.get(url)
-    if response.status_code != 200 or not response.content:
+    if response.status_code != 200:
         raise SmartMapDownloadError(f"HTTP {response.status_code}")
 
+    content_type = response.headers.get("content-type", "").lower()
+    content = response.content
+    if not content:
+        raise SmartMapDownloadError("Empty response")
+    if "pdf" not in content_type and not content.startswith(b"%PDF"):
+        raise SmartMapDownloadError(f"Unexpected content ({content_type or 'unknown type'})")
+
     file_name = f"{lot.strip().upper()}_{plan.strip().upper()}.pdf"
-    return SmartMapResult(lot=lot, plan=plan, file_name=file_name, content=response.content)
+    return SmartMapResult(lot=lot, plan=plan, file_name=file_name, content=content)
 
 
 async def generate_smartmap_zip(
@@ -80,10 +87,13 @@ async def generate_smartmap_zip(
                 result = await task
                 successes.append(result)
             except Exception as exc:  # noqa: BLE001
-                failures.append(parcel.raw or parcel.id)
+                reason = str(exc) if str(exc) else exc.__class__.__name__
+                identifier = parcel.raw or parcel.id
+                failures.append(f"{identifier} — {reason}")
 
     if not successes:
-        raise SmartMapDownloadError("No SmartMap documents could be retrieved")
+        first_failure = failures[0] if failures else "unknown reason"
+        raise SmartMapDownloadError(f"No SmartMap documents could be retrieved ({first_failure})")
 
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
         for result in successes:

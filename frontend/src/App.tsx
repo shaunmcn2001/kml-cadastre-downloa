@@ -16,7 +16,7 @@ import type {
 } from './lib/types';
 import { PropertyReportsView } from './views/PropertyReportsView';
 import { SmartMapsView } from './views/SmartMapsView';
-import { ComingSoonView } from './views/ComingSoonView';
+import { GrazingMapsView } from './views/GrazingMapsView';
 import logoImage from './assets/logo.png';
 
 function App() {
@@ -578,12 +578,7 @@ function App() {
 
       {activeView === 'property-reports' && <PropertyReportsView />}
 
-      {activeView === 'grazing-maps' && (
-        <ComingSoonView
-          title="Grazing Maps"
-          description="Layer selections and grazing-specific analytics will live here."
-        />
-      )}
+      {activeView === 'grazing-maps' && <GrazingMapsView />}
       {activeView === 'smartmaps' && <SmartMapsView />}
       <Toaster />
     </div>

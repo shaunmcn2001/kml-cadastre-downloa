@@ -27,6 +27,7 @@ from .property_report import generate_property_report, list_property_layers
 from .property_report_export import export_property_report
 from .smartmaps import generate_smartmap_zip, SmartMapDownloadError
 from .landtype.router import router as landtype_router
+from .grazing import router as grazing_router
 from .settings import (
     LOG_LEVEL,
     FRONTEND_ORIGIN,
@@ -53,6 +54,7 @@ app = FastAPI(
 )
 
 app.include_router(landtype_router, prefix="/landtype", tags=["landtype"])
+app.include_router(grazing_router, prefix="/api/grazing", tags=["grazing"])
 
 # CORS configuration
 origins = [origin.strip() for origin in FRONTEND_ORIGIN.split(",")]

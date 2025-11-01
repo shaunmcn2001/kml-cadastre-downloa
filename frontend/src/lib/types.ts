@@ -214,3 +214,32 @@ export interface LandTypeExportResponse {
   filename: string;
   contentType: string | null;
 }
+
+export type GrazingFeatureCollection = FeatureCollection<
+  Geometry,
+  {
+    type: string;
+    name: string;
+    area_ha: number;
+    [key: string]: any;
+  }
+>;
+
+export interface GrazingDownloadPayload {
+  filename: string;
+  contentType: string;
+  data: string;
+}
+
+export interface GrazingSummary {
+  pointCount: number;
+  bufferAreaHa: number;
+  convexAreaHa: number;
+}
+
+export interface GrazingProcessResponse {
+  buffers: GrazingFeatureCollection;
+  convexHull: GrazingFeatureCollection;
+  summary: GrazingSummary;
+  downloads: Record<'kml' | 'kmz' | 'shp', GrazingDownloadPayload>;
+}
