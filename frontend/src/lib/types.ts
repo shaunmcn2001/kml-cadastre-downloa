@@ -237,7 +237,7 @@ export interface GrazingRingSummary {
   label: string;
   weight: number;
   areaHa: number;
-  hullAreaHa?: number;
+  colorHex?: string;
 }
 
 export interface GrazingSummary {

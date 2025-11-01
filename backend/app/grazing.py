@@ -616,11 +616,9 @@ def _create_rings_kml(
     weights: List[float],
     geoms: List[Polygon | MultiPolygon],
     colors: List[str],
-    ring_hulls: List[Polygon | MultiPolygon],
 ) -> bytes:
     doc = Kml()
     rings_folder = doc.newfolder(name="Distance Rings")
-    hulls_folder = doc.newfolder(name="Ring Convex Hulls")
     outer_label = labels[-1] if labels else ""
 
     for label, weight, geom, color in zip(labels, weights, geoms, colors):
@@ -650,26 +648,6 @@ def _create_rings_kml(
             placemark.style.linestyle.color = stroke_kml
             placemark.style.linestyle.width = stroke_width
 
-    for label, geom, color in zip(labels, ring_hulls, colors):
-        stroke_kml = _hex_to_kml_color(color, 1.0)
-        if isinstance(geom, MultiPolygon):
-            for idx, poly in enumerate(geom.geoms, start=1):
-                placemark = hulls_folder.newpolygon(name=f"{label} km Hull (part {idx})")
-                placemark.outerboundaryis.coords = list(poly.exterior.coords)
-                for interior in poly.interiors:
-                    placemark.innerboundaryis.append(list(interior.coords))
-                placemark.style.polystyle.fill = 0
-                placemark.style.linestyle.color = stroke_kml
-                placemark.style.linestyle.width = OUTLINE_WIDTH
-        else:
-            placemark = hulls_folder.newpolygon(name=f"{label} km Hull")
-            placemark.outerboundaryis.coords = list(geom.exterior.coords)
-            for interior in geom.interiors:
-                placemark.innerboundaryis.append(list(interior.coords))
-            placemark.style.polystyle.fill = 0
-            placemark.style.linestyle.color = stroke_kml
-            placemark.style.linestyle.width = OUTLINE_WIDTH
-
     return doc.kml().encode("utf-8")
 
 
@@ -678,7 +656,6 @@ def _create_rings_shapefile_zip(
     weights: List[float],
     colors: List[str],
     geoms: List[Polygon | MultiPolygon],
-    ring_hulls: List[Polygon | MultiPolygon],
     base_slug: str,
 ) -> bytes:
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -687,35 +664,25 @@ def _create_rings_shapefile_zip(
         ring_writer.field("CLASS_KM", "C", size=32)
         ring_writer.field("WEIGHT", "F", decimal=2)
         ring_writer.field("COLOR_HEX", "C", size=16)
+        ring_writer.field("AREA_HA", "F", decimal=2)
 
         for label, weight, color, geom in zip(labels, weights, colors, geoms):
             ring_writer.poly(_polygon_parts(geom))
-            ring_writer.record(label, weight, color)
+            area = _calculate_area_ha(geom)
+            ring_writer.record(label, weight, color, round(area, 2))
         ring_writer.close()
-
-        hull_path = os.path.join(tmpdir, f"{base_slug}_ring_hulls")
-        hull_writer = shapefile.Writer(hull_path, shapeType=shapefile.POLYGON)
-        hull_writer.field("CLASS_KM", "C", size=32)
-        hull_writer.field("COLOR_HEX", "C", size=16)
-
-        for label, color, geom in zip(labels, colors, ring_hulls):
-            hull_writer.poly(_polygon_parts(geom))
-            hull_writer.record(label, color)
-        hull_writer.close()
 
         proj_wkt = (
             'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563]],'
             'PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]]'
         )
-        for path in (rings_path, hull_path):
-            with open(f"{path}.prj", "w", encoding="utf-8") as prj_file:
-                prj_file.write(proj_wkt)
+        with open(f"{rings_path}.prj", "w", encoding="utf-8") as prj_file:
+            prj_file.write(proj_wkt)
 
         output = io.BytesIO()
         with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
             for ext in (".shp", ".shx", ".dbf", ".prj"):
                 archive.write(f"{rings_path}{ext}", arcname=f"{base_slug}_rings{ext}")
-                archive.write(f"{hull_path}{ext}", arcname=f"{base_slug}_ring_hulls{ext}")
         return output.getvalue()
 
 
@@ -970,13 +937,6 @@ def _run_advanced_method(
     ]
     ring_areas = [_calculate_area_ha(ring) for ring in normalized_rings]
 
-    ring_hulls_metric = [ring.convex_hull for ring in clean_metric]
-    ring_hulls_geodetic = [
-        _merge_polygons(_extract_polygons_from_geom(_project_geometry(hull, forward=False).intersection(boundary_wgs)))
-        for hull in ring_hulls_metric
-    ]
-    ring_hull_areas = [_calculate_area_ha(hull) for hull in ring_hulls_geodetic]
-
     rings_fc = GrazingFeatureCollection(
         features=[
             GrazingFeature(
@@ -1000,28 +960,10 @@ def _run_advanced_method(
         ]
     )
 
-    ring_hulls_fc = GrazingFeatureCollection(
-        features=[
-            GrazingFeature(
-                type="Feature",
-                geometry=geom.__geo_interface__,
-                properties={
-                    "type": "ring_hull",
-                    "name": f"{label} km Hull",
-                    "distance_class": label,
-                    "area_ha": round(area, 3),
-                    "stroke_color": color,
-                    "stroke_width": OUTLINE_WIDTH,
-                },
-            )
-            for label, area, geom, color in zip(clean_labels, ring_hull_areas, ring_hulls_geodetic, clean_colors)
-        ]
-    )
-
-    kml_bytes = _create_rings_kml(clean_labels, clean_weights, normalized_rings, clean_colors, ring_hulls_geodetic)
+    kml_bytes = _create_rings_kml(clean_labels, clean_weights, normalized_rings, clean_colors)
     kmz_bytes = _create_kmz(kml_bytes)
     shapefile_slug = _build_base_slug(base_name, "grazing-advanced")
-    shp_bytes = _create_rings_shapefile_zip(clean_labels, clean_weights, clean_colors, normalized_rings, ring_hulls_geodetic, shapefile_slug)
+    shp_bytes = _create_rings_shapefile_zip(clean_labels, clean_weights, clean_colors, normalized_rings, shapefile_slug)
 
     kml_name = _build_filename(base_name, "grazing-advanced", ".kml")
     kmz_name = _build_filename(base_name, "grazing-advanced", ".kmz")
@@ -1050,14 +992,12 @@ def _run_advanced_method(
             "label": label,
             "weight": weight,
             "areaHa": round(area, 3),
-            "hullAreaHa": round(hull_area, 3),
             "colorHex": color,
         }
-        for label, weight, area, hull_area, color in zip(
+        for label, weight, area, color in zip(
             clean_labels,
             clean_weights,
             ring_areas,
-            ring_hull_areas,
             clean_colors,
         )
     ]
@@ -1065,14 +1005,13 @@ def _run_advanced_method(
     summary = GrazingSummary(
         pointCount=len(points),
         bufferAreaHa=round(sum(ring_areas), 3),
-        convexAreaHa=round(sum(ring_hull_areas), 3),
+        convexAreaHa=0.0,
         ringClasses=ring_summaries,
     )
 
     return GrazingProcessResponse(
         method="advanced",
         rings=rings_fc,
-        ringHulls=ring_hulls_fc,
         summary=summary,
         downloads=downloads,
     )

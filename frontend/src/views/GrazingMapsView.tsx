@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { formatFolderName } from '@/lib/formatters';
+import type { Feature as GeoJSONFeature } from 'geojson';
 
 type DownloadKey = keyof GrazingProcessResponse['downloads'];
 
@@ -73,7 +74,6 @@ export function GrazingMapsView() {
   const [buffers, setBuffers] = useState<GrazingFeatureCollection | null>(null);
   const [convex, setConvex] = useState<GrazingFeatureCollection | null>(null);
   const [rings, setRings] = useState<GrazingFeatureCollection | null>(null);
-  const [ringHulls, setRingHulls] = useState<GrazingFeatureCollection | null>(null);
   const [summary, setSummary] = useState<GrazingSummary | null>(null);
   const [downloads, setDownloads] = useState<GrazingProcessResponse['downloads'] | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -114,7 +114,6 @@ export function GrazingMapsView() {
     setRings(null);
     setSummary(null);
     setDownloads(null);
-    setRingHulls(null);
   }, []);
 
   const handleMethodChange = useCallback(
@@ -304,6 +303,34 @@ export function GrazingMapsView() {
     [],
   );
 
+  const handleFeaturePopup = useCallback((feature: GeoJSONFeature | null | undefined, layer: L.Layer) => {
+    if (!feature?.properties || typeof (layer as L.Layer & { bindPopup?: unknown }).bindPopup !== 'function') {
+      return;
+    }
+    const props = feature.properties as Record<string, any>;
+    const name =
+      typeof props.name === 'string'
+        ? props.name
+        : typeof props.type === 'string'
+          ? props.type
+          : 'Area';
+    const areaValue =
+      typeof props.area_ha === 'number'
+        ? props.area_ha
+        : typeof props.areaHa === 'number'
+          ? props.areaHa
+          : null;
+    const weightValue = typeof props.weight === 'number' ? props.weight : null;
+    const lines: string[] = [`<strong>${name}</strong>`];
+    if (areaValue !== null) {
+      lines.push(`${areaValue.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha`);
+    }
+    if (weightValue !== null) {
+      lines.push(`Weight ${weightValue.toFixed(2)}`);
+    }
+    (layer as L.Layer & { bindPopup(html: string): void }).bindPopup(lines.join('<br/>'));
+  }, []);
+
   const ringSummaryWithColors = useMemo(() => {
     if (!summary?.ringClasses) {
       return [];
@@ -319,7 +346,7 @@ export function GrazingMapsView() {
     });
     return summary.ringClasses.map((ring) => ({
       ...ring,
-      color: colorByLabel.get(ring.label) ?? null,
+      color: colorByLabel.get(ring.label) ?? ring.colorHex ?? null,
     }));
   }, [rings, summary]);
 
@@ -392,12 +419,11 @@ export function GrazingMapsView() {
         setRings(null);
       } else {
         setRings(result.rings ?? null);
-        setRingHulls(result.ringHulls ?? null);
         setBuffers(null);
         setConvex(null);
       }
 
-      fitToResults([result.buffers ?? null, result.convexHull ?? null, result.rings ?? null, result.ringHulls ?? null]);
+      fitToResults([result.buffers ?? null, result.convexHull ?? null, result.rings ?? null]);
       toast.success(result.method === 'basic' ? 'Grazing buffers generated successfully' : 'Advanced grazing rings generated');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to process grazing maps';
@@ -419,7 +445,6 @@ export function GrazingMapsView() {
     resetResults,
     ringColors,
     ringHexInputs,
-    basicTightness,
     basicTightnessTouched,
   ]);
 
@@ -449,7 +474,7 @@ export function GrazingMapsView() {
   );
 
   const hasBasicResults = Boolean(method === 'basic' && buffers && convex && summary);
-  const hasAdvancedResults = Boolean(method === 'advanced' && (rings || ringHulls) && summary);
+  const hasAdvancedResults = Boolean(method === 'advanced' && rings && summary);
   const hasResults = hasBasicResults || hasAdvancedResults;
 
   return (
@@ -464,10 +489,15 @@ export function GrazingMapsView() {
             ref={handleMapRef}
           >
             <TileLayer url={basemapUrl} attribution={basemapAttribution} />
-            {buffers && <GeoJSON key={`buffers-${layerVersion}`} data={buffers as any} style={featureStyle as any} />}
-            {convex && <GeoJSON key={`convex-${layerVersion}`} data={convex as any} style={featureStyle as any} />}
-            {rings && <GeoJSON key={`rings-${layerVersion}`} data={rings as any} style={featureStyle as any} />}
-            {ringHulls && <GeoJSON key={`ring-hulls-${layerVersion}`} data={ringHulls as any} style={featureStyle as any} />}
+            {buffers && (
+              <GeoJSON key={`buffers-${layerVersion}`} data={buffers as any} style={featureStyle as any} onEachFeature={handleFeaturePopup as any} />
+            )}
+            {convex && (
+              <GeoJSON key={`convex-${layerVersion}`} data={convex as any} style={featureStyle as any} onEachFeature={handleFeaturePopup as any} />
+            )}
+            {rings && (
+              <GeoJSON key={`rings-${layerVersion}`} data={rings as any} style={featureStyle as any} onEachFeature={handleFeaturePopup as any} />
+            )}
           </MapContainer>
 
           {!hasResults && (
@@ -489,7 +519,7 @@ export function GrazingMapsView() {
                 Grazing Map Builder
               </CardTitle>
               <p className="text-xs text-muted-foreground">
-                Upload trough points and a boundary to generate grazing zones. Choose between the basic 3 km buffer workflow or advanced graded rings around water points.
+                Drop trough points and a paddock boundary to map grazing zones in minutes.
               </p>
               <div className="flex flex-wrap items-center gap-2 pt-2">
                 <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Method</span>
@@ -500,8 +530,8 @@ export function GrazingMapsView() {
               </div>
               <p className="text-[11px] text-muted-foreground">
                 {method === 'basic'
-                  ? 'Basic: buffers every trough by 3 km, creates a concave alpha hull that honours holes, and clips to the supplied boundary.'
-                  : 'Advanced: builds weighted rings at 0.5, 1.5, and 3 km from troughs, clipped to the supplied boundary.'}
+                  ? 'Basic: 3 km buffers joined into a developed area, clipped to your boundary.'
+                  : 'Advanced: three distance rings at 0.5, 1.5, and 3 km with optional weights.'}
               </p>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -525,8 +555,7 @@ export function GrazingMapsView() {
                 <label htmlFor="grazing-points-upload" className="flex flex-col items-center gap-2 cursor-pointer">
                   <UploadSimple className="w-8 h-8 text-primary" />
                   <span className="text-sm font-medium text-foreground">Drop trough points or click to upload</span>
-                  <span className="text-xs text-muted-foreground">Accepted formats: KML, KMZ, or zipped Shapefile (points only)</span>
-                  <span className="text-[11px] text-muted-foreground/80">Altitude values are ignored automatically.</span>
+                  <span className="text-xs text-muted-foreground">KML, KMZ, or zipped SHP (points)</span>
                 </label>
                 {pointsFile && (
                   <p className="mt-3 text-[11px] text-muted-foreground">
@@ -555,8 +584,7 @@ export function GrazingMapsView() {
                 <label htmlFor="grazing-boundary-upload" className="flex flex-col items-center gap-2 cursor-pointer">
                   <CloudArrowUp className="w-8 h-8 text-primary" />
                   <span className="text-sm font-medium text-foreground">Drop boundary or click to upload</span>
-                  <span className="text-xs text-muted-foreground">Accepted formats: KML, KMZ, or zipped Shapefile (polygons)</span>
-                  <span className="text-[11px] text-muted-foreground/80">The boundary clips all outputs so buffers stay inside your paddock.</span>
+                  <span className="text-xs text-muted-foreground">KML, KMZ, or zipped SHP (polygons)</span>
                 </label>
                 {boundaryFile && (
                   <p className="mt-3 text-[11px] text-muted-foreground">
@@ -592,9 +620,7 @@ export function GrazingMapsView() {
                     Format
                   </Button>
                 </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Applies consistent casing and punctuation in the exported KMZ/KML names. Leave empty to use defaults.
-                </p>
+                <p className="text-[11px] text-muted-foreground">Used in exported KMZ/KML names. Leave blank for defaults.</p>
               </div>
 
               {method === 'basic' ? (
@@ -629,9 +655,7 @@ export function GrazingMapsView() {
                         Reset
                       </Button>
                     </div>
-                    <p className="text-[11px] text-muted-foreground">
-                      Used for the 3 km buffers and concave hull. Fill opacity is fixed at 40% with a 4 px black outline.
-                    </p>
+                    <p className="text-[11px] text-muted-foreground">Applies to buffers and the developed area. Opacity is fixed at 40%.</p>
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -721,9 +745,7 @@ export function GrazingMapsView() {
               )}
 
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-[11px] text-muted-foreground">
-                  Both files must be supplied before generating zones.
-                </div>
+                <div className="text-[11px] text-muted-foreground">Upload both files to enable the generator.</div>
                 <Button
                   onClick={handleGenerate}
                   disabled={!pointsFile || !boundaryFile || isProcessing || (method === 'basic' && !basicTightnessTouched)}
@@ -747,12 +769,14 @@ export function GrazingMapsView() {
                       {summary.pointCount} point{summary.pointCount === 1 ? '' : 's'}
                     </Badge>
                     <span>
-                      Total polygon area: <strong>{summary.bufferAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</strong>
+                      Total mapped area: <strong>{summary.bufferAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</strong>
                     </span>
-                    <span>
-                      {method === 'basic' ? 'Concave hull area:' : 'Total hull area:'}{' '}
-                      <strong>{summary.convexAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</strong>
-                    </span>
+                    {method === 'basic' && (
+                      <span>
+                        Developed area:{' '}
+                        <strong>{summary.convexAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</strong>
+                      </span>
+                    )}
                   </div>
 
                   {method === 'advanced' && ringSummaryWithColors.length > 0 ? (
@@ -772,18 +796,12 @@ export function GrazingMapsView() {
                                 />
                                 <span className="font-medium text-sm">{ring.label} km</span>
                               </div>
-                              <span>Weight {ring.weight.toFixed(2)}</span>
+                              <span className="text-xs text-muted-foreground">Weight {ring.weight.toFixed(2)}</span>
                             </div>
-                            <div className="mt-2 grid grid-cols-2 gap-y-1 gap-x-4">
-                              <span>Ring area</span>
-                              <span className="text-right text-foreground">
+                            <div className="mt-2 flex items-center justify-between text-sm">
+                              <span className="text-muted-foreground">Area</span>
+                              <span className="font-medium text-foreground">
                                 {ring.areaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha
-                              </span>
-                              <span>Convex hull area</span>
-                              <span className="text-right text-foreground">
-                                {typeof ring.hullAreaHa === 'number'
-                                  ? `${ring.hullAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha`
-                                  : '—'}
                               </span>
                             </div>
                           </div>
