@@ -6,12 +6,13 @@ import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api';
-import type { GrazingFeatureCollection, GrazingProcessResponse, GrazingSummary } from '@/lib/types';
+import type { GrazingFeatureCollection, GrazingProcessResponse, GrazingSummary, GrazingMethod } from '@/lib/types';
 import { MapContainer, TileLayer, GeoJSON } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { cn } from '@/lib/utils';
 import { CloudArrowUp, DownloadSimple, FileWarning, MapPin, UploadSimple } from '@phosphor-icons/react';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
 type DownloadKey = keyof GrazingProcessResponse['downloads'];
 
@@ -31,8 +32,12 @@ const downloadsMeta: DownloadItem[] = [
 ];
 
 export function GrazingMapsView() {
+  const [method, setMethod] = useState<GrazingMethod>('basic');
+  const [pointsFile, setPointsFile] = useState<File | null>(null);
+  const [boundaryFile, setBoundaryFile] = useState<File | null>(null);
   const [buffers, setBuffers] = useState<GrazingFeatureCollection | null>(null);
   const [convex, setConvex] = useState<GrazingFeatureCollection | null>(null);
+  const [rings, setRings] = useState<GrazingFeatureCollection | null>(null);
   const [summary, setSummary] = useState<GrazingSummary | null>(null);
   const [downloads, setDownloads] = useState<GrazingProcessResponse['downloads'] | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -43,86 +48,121 @@ export function GrazingMapsView() {
     mapRef.current = instance;
   }, []);
 
-  const fitToResults = useCallback(
-    (data: GrazingFeatureCollection | null, other?: GrazingFeatureCollection | null) => {
-      const map = mapRef.current;
-      if (!map) return;
-      const layers: L.GeoJSON[] = [];
+  const fitToResults = useCallback((collections: Array<GrazingFeatureCollection | null | undefined>) => {
+    const map = mapRef.current;
+    if (!map) return;
 
-      const addLayer = (collection: GrazingFeatureCollection | null) => {
-        if (!collection) return;
+    const layers = collections
+      .filter(Boolean)
+      .map((collection) => {
         const layer = L.geoJSON(collection as any);
-        if (layer.getLayers().length > 0) {
-          layers.push(layer);
-        }
-      };
+        return layer.getLayers().length > 0 ? layer : null;
+      })
+      .filter(Boolean) as L.GeoJSON[];
 
-      addLayer(data);
-      addLayer(other ?? null);
+    if (!layers.length) {
+      return;
+    }
 
-      if (!layers.length) return;
+    const featureGroup = L.featureGroup(layers);
+    const bounds = featureGroup.getBounds();
+    if (bounds.isValid()) {
+      map.fitBounds(bounds, { padding: [32, 32] });
+    }
+  }, []);
 
-      const featureGroup = L.featureGroup(layers);
-      const bounds = featureGroup.getBounds();
-      if (bounds.isValid()) {
-        map.fitBounds(bounds, { padding: [32, 32] });
-      }
+  const resetResults = useCallback(() => {
+    setBuffers(null);
+    setConvex(null);
+    setRings(null);
+    setSummary(null);
+    setDownloads(null);
+  }, []);
+
+  const handleMethodChange = useCallback(
+    (value: string) => {
+      if (!value) return;
+      setMethod(value as GrazingMethod);
+      resetResults();
     },
-    [],
+    [resetResults],
   );
 
-  const processFile = useCallback(
-    async (file: File) => {
-      setIsProcessing(true);
-      setUploadError(null);
+  const handlePointsSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    setPointsFile(file);
+    setUploadError(null);
+    event.target.value = '';
+  }, []);
 
-      try {
-        const result = await apiClient.processGrazing(file);
-        setBuffers(result.buffers);
-        setConvex(result.convexHull);
-        setSummary(result.summary);
-        setDownloads(result.downloads);
-        fitToResults(result.buffers, result.convexHull);
-        toast.success('Grazing buffers generated successfully');
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to process grazing maps';
-        setUploadError(message);
-        toast.error(message);
-        setBuffers(null);
-        setConvex(null);
-        setDownloads(null);
-        setSummary(null);
-      } finally {
-        setIsProcessing(false);
-      }
-    },
-    [fitToResults],
-  );
-
-  const handleFileSelect = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      if (file) {
-        void processFile(file);
-      }
-    },
-    [processFile],
-  );
-
-  const handleDrop = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      const file = event.dataTransfer.files?.[0];
-      if (file) {
-        void processFile(file);
-      }
-    },
-    [processFile],
-  );
+  const handleBoundarySelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    setBoundaryFile(file);
+    setUploadError(null);
+    event.target.value = '';
+  }, []);
 
   const preventDefault = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
   }, []);
+
+  const handlePointsDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const file = event.dataTransfer.files?.[0] ?? null;
+    if (file) {
+      setPointsFile(file);
+      setUploadError(null);
+    }
+  }, []);
+
+  const handleBoundaryDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const file = event.dataTransfer.files?.[0] ?? null;
+    if (file) {
+      setBoundaryFile(file);
+      setUploadError(null);
+    }
+  }, []);
+
+  const handleGenerate = useCallback(async () => {
+    if (!pointsFile) {
+      setUploadError('Upload a trough point dataset to continue.');
+      return;
+    }
+    if (!boundaryFile) {
+      setUploadError('Upload a boundary file to clip the grazing areas.');
+      return;
+    }
+
+    setIsProcessing(true);
+    setUploadError(null);
+
+    try {
+      const result = await apiClient.processGrazing(pointsFile, method, boundaryFile);
+      setSummary(result.summary);
+      setDownloads(result.downloads);
+
+      if (result.method === 'basic') {
+        setBuffers(result.buffers ?? null);
+        setConvex(result.convexHull ?? null);
+        setRings(null);
+      } else {
+        setRings(result.rings ?? null);
+        setBuffers(null);
+        setConvex(null);
+      }
+
+      fitToResults([result.buffers ?? null, result.convexHull ?? null, result.rings ?? null]);
+      toast.success(result.method === 'basic' ? 'Grazing buffers generated successfully' : 'Advanced grazing rings generated');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to process grazing maps';
+      setUploadError(message);
+      toast.error(message);
+      resetResults();
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [boundaryFile, fitToResults, method, pointsFile, resetResults]);
 
   const handleDownload = useCallback(
     (key: DownloadKey) => {
@@ -169,7 +209,19 @@ export function GrazingMapsView() {
     [],
   );
 
-  const hasResults = Boolean(buffers && convex && summary);
+  const ringLayerStyle = useMemo(
+    () => ({
+      color: '#be185d',
+      weight: 2,
+      fillColor: '#f472b6',
+      fillOpacity: 0.3,
+    }),
+    [],
+  );
+
+  const hasBasicResults = Boolean(method === 'basic' && buffers && convex && summary);
+  const hasAdvancedResults = Boolean(method === 'advanced' && rings && summary);
+  const hasResults = hasBasicResults || hasAdvancedResults;
 
   return (
     <div className="flex-1 overflow-hidden">
@@ -189,14 +241,17 @@ export function GrazingMapsView() {
             {convex && (
               <GeoJSON key="convex" data={convex as any} style={() => convexLayerStyle} />
             )}
+            {rings && (
+              <GeoJSON key="rings" data={rings as any} style={() => ringLayerStyle} />
+            )}
           </MapContainer>
 
           {!hasResults && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/75 backdrop-blur-sm">
               <MapPin className="w-12 h-12 text-muted-foreground" />
               <div className="text-center text-muted-foreground">
-                <p className="text-sm font-medium">Upload grazing points to begin</p>
-                <p className="text-xs">Supports KML, KMZ, or zipped SHP point datasets</p>
+                <p className="text-sm font-medium">Upload trough points and a boundary to begin</p>
+                <p className="text-xs">Supports KML, KMZ, or zipped SHP datasets</p>
               </div>
             </div>
           )}
@@ -210,8 +265,19 @@ export function GrazingMapsView() {
                 Grazing Map Builder
               </CardTitle>
               <p className="text-xs text-muted-foreground">
-                Upload a point dataset to generate 3 km grazing buffers and a smoothed convex hull. Both layers
-                include area calculations for reporting.
+                Upload trough points and a boundary to generate grazing zones. Choose between the basic 3 km buffer workflow or advanced graded rings around water points.
+              </p>
+              <div className="flex flex-wrap items-center gap-2 pt-2">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Method</span>
+                <ToggleGroup type="single" value={method} onValueChange={handleMethodChange} className="bg-muted/40 rounded-md p-1">
+                  <ToggleGroupItem value="basic" className="text-xs">Basic</ToggleGroupItem>
+                  <ToggleGroupItem value="advanced" className="text-xs">Advanced</ToggleGroupItem>
+                </ToggleGroup>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                {method === 'basic'
+                  ? 'Basic: buffers every trough by 3 km, applies a smoothed convex hull, and clips to the supplied boundary.'
+                  : 'Advanced: builds weighted rings at 0.5, 1.5, and 3 km from troughs, clipped to the supplied boundary.'}
               </p>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -221,33 +287,72 @@ export function GrazingMapsView() {
                   'bg-muted/40 hover:bg-muted/60 cursor-pointer',
                   isProcessing && 'opacity-70 pointer-events-none',
                 )}
-                onDrop={handleDrop}
+                onDrop={handlePointsDrop}
                 onDragOver={preventDefault}
                 onDragEnter={preventDefault}
               >
                 <input
-                  id="grazing-upload"
+                  id="grazing-points-upload"
                   type="file"
                   accept=".kml,.kmz,.zip,.shp"
                   className="hidden"
-                  onChange={handleFileSelect}
+                  onChange={handlePointsSelect}
                 />
-                <label htmlFor="grazing-upload" className="flex flex-col items-center gap-2 cursor-pointer">
+                <label htmlFor="grazing-points-upload" className="flex flex-col items-center gap-2 cursor-pointer">
                   <UploadSimple className="w-8 h-8 text-primary" />
-                  <span className="text-sm font-medium text-foreground">Drop file or click to upload</span>
-                  <span className="text-xs text-muted-foreground">
-                    Accepted formats: KML, KMZ, or zipped Shapefile (points only)
-                  </span>
-                  <span className="text-[11px] text-muted-foreground/80">Buffers use a 3 km radius; hull smoothing 500 m.</span>
+                  <span className="text-sm font-medium text-foreground">Drop trough points or click to upload</span>
+                  <span className="text-xs text-muted-foreground">Accepted formats: KML, KMZ, or zipped Shapefile (points only)</span>
+                  <span className="text-[11px] text-muted-foreground/80">Altitude values are ignored automatically.</span>
                 </label>
+                {pointsFile && (
+                  <p className="mt-3 text-[11px] text-muted-foreground">
+                    Selected: <span className="font-medium text-foreground">{pointsFile.name}</span>
+                  </p>
+                )}
               </div>
 
-              {isProcessing && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                  Processing uploaded points…
+              <div
+                className={cn(
+                  'border border-dashed rounded-lg p-6 text-center transition-colors',
+                  'bg-muted/30 hover:bg-muted/50 cursor-pointer',
+                  isProcessing && 'opacity-70 pointer-events-none',
+                )}
+                onDrop={handleBoundaryDrop}
+                onDragOver={preventDefault}
+                onDragEnter={preventDefault}
+              >
+                <input
+                  id="grazing-boundary-upload"
+                  type="file"
+                  accept=".kml,.kmz,.zip,.shp"
+                  className="hidden"
+                  onChange={handleBoundarySelect}
+                />
+                <label htmlFor="grazing-boundary-upload" className="flex flex-col items-center gap-2 cursor-pointer">
+                  <CloudArrowUp className="w-8 h-8 text-primary" />
+                  <span className="text-sm font-medium text-foreground">Drop boundary or click to upload</span>
+                  <span className="text-xs text-muted-foreground">Accepted formats: KML, KMZ, or zipped Shapefile (polygons)</span>
+                  <span className="text-[11px] text-muted-foreground/80">The boundary clips all outputs so buffers stay inside your paddock.</span>
+                </label>
+                {boundaryFile && (
+                  <p className="mt-3 text-[11px] text-muted-foreground">
+                    Selected: <span className="font-medium text-foreground">{boundaryFile.name}</span>
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-[11px] text-muted-foreground">
+                  Both files must be supplied before generating zones.
                 </div>
-              )}
+                <Button
+                  onClick={handleGenerate}
+                  disabled={!pointsFile || !boundaryFile || isProcessing}
+                  className="sm:w-auto"
+                >
+                  {isProcessing ? 'Processing…' : `Generate ${method === 'basic' ? 'Basic Zones' : 'Advanced Rings'}`}
+                </Button>
+              </div>
 
               {uploadError && (
                 <Alert variant="destructive">
@@ -262,18 +367,32 @@ export function GrazingMapsView() {
                     <Badge variant="secondary" className="px-2 py-0.5">
                       {summary.pointCount} point{summary.pointCount === 1 ? '' : 's'}
                     </Badge>
-                    <span>Total buffers area: <strong>{summary.bufferAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</strong></span>
+                    <span>Total area: <strong>{summary.bufferAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</strong></span>
                   </div>
-                  <div className="rounded-lg border bg-muted/40 p-3 text-xs space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">3 km Buffers</span>
-                      <span>{summary.bufferAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</span>
+                  {summary.ringClasses && summary.ringClasses.length > 0 ? (
+                    <div className="rounded-lg border bg-muted/40 p-3 text-xs space-y-2">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Ring Classes</div>
+                      <div className="space-y-1">
+                        {summary.ringClasses.map((ring) => (
+                          <div key={ring.label} className="flex items-center justify-between">
+                            <span className="font-medium">{ring.label} km</span>
+                            <span className="text-muted-foreground">Weight {ring.weight.toFixed(2)} • {ring.areaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">Smoothed Convex Hull</span>
-                      <span>{summary.convexAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</span>
+                  ) : (
+                    <div className="rounded-lg border bg-muted/40 p-3 text-xs space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">3 km Buffers</span>
+                        <span>{summary.bufferAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">Smoothed Convex Hull</span>
+                        <span>{summary.convexAreaHa.toLocaleString(undefined, { maximumFractionDigits: 2 })} ha</span>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
 

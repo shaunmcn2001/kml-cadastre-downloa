@@ -231,15 +231,26 @@ export interface GrazingDownloadPayload {
   data: string;
 }
 
+export type GrazingMethod = 'basic' | 'advanced';
+
+export interface GrazingRingSummary {
+  label: string;
+  weight: number;
+  areaHa: number;
+}
+
 export interface GrazingSummary {
   pointCount: number;
   bufferAreaHa: number;
   convexAreaHa: number;
+  ringClasses?: GrazingRingSummary[];
 }
 
 export interface GrazingProcessResponse {
-  buffers: GrazingFeatureCollection;
-  convexHull: GrazingFeatureCollection;
+  method: GrazingMethod;
+  buffers?: GrazingFeatureCollection | null;
+  convexHull?: GrazingFeatureCollection | null;
+  rings?: GrazingFeatureCollection | null;
   summary: GrazingSummary;
   downloads: Record<'kml' | 'kmz' | 'shp', GrazingDownloadPayload>;
 }

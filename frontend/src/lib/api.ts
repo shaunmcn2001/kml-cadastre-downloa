@@ -16,7 +16,8 @@ import type {
   LandTypeFeatureCollection,
   LandTypeExportRequest,
   LandTypeExportResponse,
-  GrazingProcessResponse
+  GrazingProcessResponse,
+  GrazingMethod
 } from './types';
 
 function extractFilenameFromDisposition(disposition: string | null): string | null {
@@ -266,9 +267,13 @@ class ApiClient {
     }
   }
 
-  async processGrazing(file: File): Promise<GrazingProcessResponse> {
+  async processGrazing(points: File, method: GrazingMethod, boundary?: File | null): Promise<GrazingProcessResponse> {
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', points);
+    formData.append('method', method);
+    if (boundary) {
+      formData.append('boundary', boundary);
+    }
     return this.makeRequest<GrazingProcessResponse>('POST', '/api/grazing/process', formData);
   }
 
