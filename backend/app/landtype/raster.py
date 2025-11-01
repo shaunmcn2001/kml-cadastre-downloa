@@ -5,10 +5,16 @@ import os
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
-import rasterio
-from rasterio.features import rasterize
-from rasterio.transform import from_bounds
 from shapely.geometry import mapping
+
+try:
+    import rasterio  # type: ignore[import-not-found]
+    from rasterio.features import rasterize  # type: ignore[import-not-found]
+    from rasterio.transform import from_bounds  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover - handled at runtime
+    rasterio = None  # type: ignore[assignment]
+    rasterize = None  # type: ignore[assignment]
+    from_bounds = None  # type: ignore[assignment]
 
 from .colors import color_from_code
 
@@ -26,6 +32,12 @@ def make_geotiff_rgba(
     Each tuple: (geom4326, code, name, area_ha). Colors are derived from code.
     Returns a small dict including path and size.
     """
+    if rasterio is None or rasterize is None or from_bounds is None:
+        raise RuntimeError(
+            "Landtype GeoTIFF exports require the optional 'rasterio' dependency. "
+            "Install rasterio in the backend environment to enable this feature."
+        )
+
     if not clipped:
         raise ValueError("No polygons to rasterize.")
 
