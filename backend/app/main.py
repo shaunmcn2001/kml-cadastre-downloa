@@ -57,7 +57,11 @@ app.include_router(landtype_router, prefix="/landtype", tags=["landtype"])
 app.include_router(grazing_router, prefix="/api/grazing", tags=["grazing"])
 
 # CORS configuration
-origins = [origin.strip() for origin in FRONTEND_ORIGIN.split(",")]
+origins = [origin.strip() for origin in FRONTEND_ORIGIN.split(",") if origin.strip()]
+if not origins:
+    origins = ["*"]
+elif "*" in origins:
+    origins = ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,

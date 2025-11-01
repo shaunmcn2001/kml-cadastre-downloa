@@ -7,7 +7,7 @@ services:
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: FRONTEND_ORIGIN
-        value: https://your-username.github.io/your-repo-name
+        value: "*,http://localhost:5173,https://kml-cadastre-downloa.onrender.com"
       - key: LOG_LEVEL
         value: INFO
       - key: CACHE_TTL
