@@ -395,6 +395,13 @@ def _create_basic_kml(
     return doc.kml().encode("utf-8")
 
 
+def _create_kmz(kml_bytes: bytes) -> bytes:
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("doc.kml", kml_bytes)
+    return output.getvalue()
+
+
 def _create_basic_shapefile_zip(
     buffers: MultiPolygon,
     convex: Polygon,
