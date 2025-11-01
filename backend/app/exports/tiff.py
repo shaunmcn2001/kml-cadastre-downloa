@@ -1,12 +1,20 @@
-import numpy as np
-import rasterio
-from rasterio.transform import from_bounds
-from rasterio.features import rasterize
-from shapely.geometry import shape
-from typing import List, Dict, Any, Optional
 import io
+from typing import List, Optional
+
+import numpy as np
+from shapely.geometry import shape
+
 from ..models import Feature, StyleOptions
 from ..utils.logging import get_logger
+
+try:
+    import rasterio  # type: ignore[import-not-found]
+    from rasterio.transform import from_bounds  # type: ignore[import-not-found]
+    from rasterio.features import rasterize  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover - handled at runtime
+    rasterio = None  # type: ignore[assignment]
+    from_bounds = None  # type: ignore[assignment]
+    rasterize = None  # type: ignore[assignment]
 
 logger = get_logger(__name__)
 
@@ -24,6 +32,12 @@ def export_geotiff(
     bbox: Optional[List[float]] = None
 ) -> bytes:
     """Export features to GeoTIFF raster format."""
+    if rasterio is None or from_bounds is None or rasterize is None:
+        raise RuntimeError(
+            "GeoTIFF export requires the optional 'rasterio' dependency. "
+            "Install rasterio on the backend environment to enable this export."
+        )
+
     if not features:
         raise ValueError("No features to export")
     
