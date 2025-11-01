@@ -13,7 +13,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastkml import kml as fastkml  # type: ignore[import-untyped]
 from pydantic import BaseModel
 from shapely.geometry import GeometryCollection, LineString, MultiPolygon, Point, Polygon, mapping, shape
-from shapely.ops import transform, unary_union
+from shapely.ops import nearest_points, transform, unary_union
 from simplekml import Kml
 from pyproj import Geod, Transformer
 import shapefile  # type: ignore[import-untyped]
@@ -359,6 +359,61 @@ def _sample_perimeter_points(poly: Polygon, step: float = PERIMETER_SAMPLE_STEP)
     return coords
 
 
+def _connector_width_from_tightness(tightness_percent: Optional[float]) -> float:
+    tightness = 100.0 if tightness_percent is None else max(0.0, min(100.0, tightness_percent))
+    min_width = 10.0
+    max_width = max(min_width, BUFFER_DISTANCE_METERS * 0.05)
+    factor = (100.0 - tightness) / 100.0
+    return min_width + factor * (max_width - min_width)
+
+
+def _build_connector_lines(components: Sequence[Polygon]) -> List[LineString]:
+    polygons = [poly.buffer(0) for poly in components if not poly.is_empty]
+    count = len(polygons)
+    if count <= 1:
+        return []
+
+    edges: List[Tuple[float, int, int, Point, Point]] = []
+    for i in range(count):
+        for j in range(i + 1, count):
+            distance = polygons[i].distance(polygons[j])
+            if distance <= 0:
+                continue
+            point_a, point_b = nearest_points(polygons[i], polygons[j])
+            edges.append((distance, i, j, point_a, point_b))
+
+    if not edges:
+        return []
+
+    edges.sort(key=lambda item: item[0])
+    parent = list(range(count))
+
+    def find(idx: int) -> int:
+        while parent[idx] != idx:
+            parent[idx] = parent[parent[idx]]
+            idx = parent[idx]
+        return idx
+
+    def union(a: int, b: int) -> None:
+        root_a = find(a)
+        root_b = find(b)
+        if root_a != root_b:
+            parent[root_b] = root_a
+
+    connectors: List[LineString] = []
+    for _, i, j, point_a, point_b in edges:
+        if find(i) == find(j):
+            continue
+        coords_a = point_a.coords[0]
+        coords_b = point_b.coords[0]
+        if coords_a == coords_b:
+            continue
+        connectors.append(LineString([coords_a, coords_b]))
+        union(i, j)
+
+    return connectors
+
+
 def _polygon_parts(geom: Polygon | MultiPolygon) -> List[List[Tuple[float, float]]]:
     if isinstance(geom, Polygon):
         parts = [list(geom.exterior.coords)]
@@ -698,7 +753,8 @@ def _run_basic_method(
     tightness_percent: Optional[float],
 ) -> GrazingProcessResponse:
     projected_buffers = [point.buffer(BUFFER_DISTANCE_METERS) for point in projected_points]
-    buffer_union_metric = _ensure_multipolygon(unary_union(projected_buffers))
+    base_union_metric = unary_union(projected_buffers).buffer(0)
+    buffer_union_metric = _ensure_multipolygon(base_union_metric)
 
     buffer_centroids = np.array([[poly.centroid.x, poly.centroid.y] for poly in projected_buffers], dtype=float)
 
@@ -722,10 +778,25 @@ def _run_basic_method(
     alpha_scale = effective_percent / 100.0
     used_alpha = float(np.clip(base_alpha / alpha_scale, ALPHA_MIN, ALPHA_MAX))
 
-    concave_metric = _compute_concave_hull(projected_buffers, used_alpha, HULL_JOIN_DISTANCE_METERS)
-    concave_clipped = concave_metric.intersection(boundary_metric)
+    components = _extract_polygons_from_geom(buffer_union_metric)
+    connector_width = _connector_width_from_tightness(tightness_percent)
+    connector_lines = _build_connector_lines(components)
+
+    developed_metric = base_union_metric
+    if connector_lines:
+        connector_polys = [
+            line.buffer(connector_width / 2.0, cap_style=2, join_style=2)
+            for line in connector_lines
+            if not line.is_empty and line.length > 0
+        ]
+        if connector_polys:
+            connector_geom = unary_union(connector_polys)
+            if not connector_geom.is_empty:
+                developed_metric = unary_union([developed_metric, connector_geom]).buffer(0)
+
+    concave_clipped = developed_metric.intersection(boundary_metric)
     if concave_clipped.is_empty:
-        concave_clipped = concave_metric
+        concave_clipped = developed_metric
 
     buffer_geodetic_polys = [_project_geometry(poly, forward=False).buffer(0) for poly in projected_buffers]
     concave_geodetic = _project_geometry(concave_clipped, forward=False)
